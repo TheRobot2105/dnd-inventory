@@ -18,64 +18,64 @@ App boots; welcome empty state; settings page with wipe; logging plumbing in pla
 
 **Repo & tooling**
 - [x] pnpm workspace root (`pnpm-workspace.yaml`, root `package.json`)
-- [ ] `apps/web` Vite + React 18 + TypeScript app scaffolded
+- [x] `apps/web` Vite + React 18 + TypeScript app scaffolded
 - [x] `packages/shared` package created (empty placeholder index)
 - [x] `packages/rules` package created (empty placeholder index)
 - [x] `packages/seeds` package created (empty placeholder index)
 - [x] `infra/docker/` directory created with placeholder README
 - [x] Root `tsconfig.base.json` with `strict`, `noUncheckedIndexedAccess`, `noImplicitOverride`
 - [x] Per-package `tsconfig.json` extending base
-- [~] ESLint config (flat config) with TS + React rules
+- [x] ESLint config (flat config) with TS + React rules
 - [x] Prettier config + `.editorconfig`
-- [~] Vitest config at workspace root + `apps/web`
+- [x] Vitest config at workspace root + `apps/web`
 - [x] `pnpm typecheck` script wired across workspace
-- [ ] `pnpm --filter @app/web dev` runs the empty app
-- [ ] `pnpm --filter @app/web build` produces a production bundle
-- [ ] `pnpm --filter @app/web lint` passes on empty scaffold
-- [ ] `pnpm --filter @app/web test` runs (no tests yet, exits 0)
+- [x] `pnpm --filter @app/web dev` runs the empty app
+- [x] `pnpm --filter @app/web build` produces a production bundle
+- [x] `pnpm --filter @app/web lint` passes on empty scaffold
+- [x] `pnpm --filter @app/web test` runs (no tests yet, exits 0)
 - [x] CI-friendly `.gitignore` (node_modules, dist, .turbo, coverage)
-- [ ] README with private-use disclaimer (per `../CLAUDE.md` — no PHB/DMG redistribution)
+- [x] README with private-use disclaimer (per `../CLAUDE.md` — no PHB/DMG redistribution)
 
 **App shell**
-- [ ] Tailwind + PostCSS configured in `apps/web`
-- [ ] shadcn-ui initialized; `components.json` committed
-- [ ] `src/components/ui/` populated with first primitives (button, dialog, input)
-- [ ] App entry (`src/main.tsx`) renders root component
-- [ ] Top-level layout component (header / content slot)
-- [ ] Empty-state **Welcome** screen ("Create your character" CTA, settings link)
-- [ ] **Settings** screen route (stub: app version, wipe button)
-- [ ] Simple in-app router/navigation between Welcome and Settings (no library beyond what's needed)
+- [x] Tailwind + PostCSS configured in `apps/web`
+- [x] shadcn-ui initialized; `components.json` committed
+- [x] `src/components/ui/` populated with first primitives (button, dialog, input)
+- [x] App entry (`src/main.tsx`) renders root component
+- [x] Top-level layout component (header / content slot)
+- [x] Empty-state **Welcome** screen ("Create your character" CTA, settings link)
+- [x] **Settings** screen route (stub: app version, wipe button)
+- [x] Simple in-app router/navigation between Welcome and Settings (no library beyond what's needed)
 
 **Persistence plumbing**
-- [ ] Dexie added to `apps/web`
-- [ ] `src/db/schema.ts` — Dexie schema for `dnd-inv:v1` blob (key per `MVP.md` §6/§10)
-- [ ] `src/db/load.ts` — load AppState (returns `null` if absent)
-- [ ] `src/db/save.ts` — debounced save of AppState
-- [ ] `src/db/wipe.ts` — clear all stored state
-- [ ] Wipe button in Settings wired to `wipe.ts` with confirm dialog
-- [ ] App boots empty AppState when nothing is stored
+- [x] Dexie added to `apps/web`
+- [x] `src/db/schema.ts` — Dexie schema for `dnd-inv:v1` blob (key per `MVP.md` §6/§10)
+- [x] `src/db/load.ts` — load AppState (returns `null` if absent)
+- [x] `src/db/save.ts` — debounced save of AppState
+- [x] `src/db/wipe.ts` — clear all stored state
+- [x] Wipe button in Settings wired to `wipe.ts` with confirm dialog
+- [x] App boots empty AppState when nothing is stored
 
 **State + logging plumbing**
-- [ ] Zustand store created in `src/store/index.ts`
-- [ ] Immer middleware wired
-- [ ] `src/store/reducer.ts` — action dispatcher skeleton (no actions yet)
-- [ ] Reducer appends a `TransactionLog` entry on every action (verified by a no-op test)
-- [ ] Reducer triggers debounced persist after each action
-- [ ] `src/store/types.ts` — re-exports the `AppState` type from `packages/shared`
-- [ ] First placeholder reducer test (`reducer.test.ts`) proves logging + persist hooks fire
+- [x] Zustand store created in `src/store/index.ts`
+- [x] Immer middleware wired
+- [x] `src/store/reducer.ts` — action dispatcher skeleton (no actions yet)
+- [x] Reducer appends a `TransactionLog` entry on every action (verified by a no-op test)
+- [x] Reducer triggers debounced persist after each action
+- [x] `src/store/types.ts` — re-exports the `AppState` type from `packages/shared`
+- [x] First placeholder reducer test (`reducer.test.ts`) proves logging + persist hooks fire
 
 **Rules-module stubs (per `MVP.md` §8 — type signatures only, no implementation)**
-- [ ] `packages/rules/capacity.ts` — stub with signatures matching `OUTLINE.md` §6
-- [ ] `packages/rules/attunement.ts` — stub
-- [ ] `packages/rules/charges.ts` — stub
-- [ ] `packages/rules/weight.ts` — stub
-- [ ] `packages/rules/hoard.ts` — stub
-- [ ] `packages/rules/validation.ts` — stub
-- [ ] `packages/rules/pricing.ts` — stub
-- [ ] `packages/rules/search.ts` — stub
-- [ ] All stubs export typed signatures only; throw `not-implemented` at runtime
-- [ ] `packages/rules/index.ts` — barrel export
-- [ ] Typecheck passes across all stubs (no ripple changes needed when activated later)
+- [x] `packages/rules/capacity.ts` — stub with signatures matching `OUTLINE.md` §6
+- [x] `packages/rules/attunement.ts` — stub
+- [x] `packages/rules/charges.ts` — stub
+- [x] `packages/rules/weight.ts` — stub
+- [x] `packages/rules/hoard.ts` — stub
+- [x] `packages/rules/validation.ts` — stub
+- [x] `packages/rules/pricing.ts` — stub
+- [x] `packages/rules/search.ts` — stub
+- [x] All stubs export typed signatures only; throw `not-implemented` at runtime
+- [x] `packages/rules/index.ts` — barrel export
+- [x] Typecheck passes across all stubs (no ripple changes needed when activated later)
 
 #### M0 — Notes
 
@@ -88,6 +88,26 @@ App boots; welcome empty state; settings page with wipe; logging plumbing in pla
 > **Issues noted:**
 > - An IDE plugin keeps re-adding an `allowBuilds:` block to `pnpm-workspace.yaml`. Harmless — pnpm 11 uses `onlyBuiltDependencies` (also present). Likely a pnpm VS Code extension; investigate or disable.
 > - Dev-deps (`eslint`, `typescript`, `typescript-eslint`, `@eslint/js`, `vitest`, `@types/node`) are duplicated in every `packages/*/package.json`. Works (pnpm hoists), but cleaner pattern is root-only via `-w`. Tidy when adding `apps/web`.
+>
+> **2026-06-22 (later) — M0 complete.** All M0 checklist items shipped.
+> - **`apps/web` scaffold:** Vite 5 + React 18 + TS strict. `tsconfig.app.json` with `@/*` path alias. `pnpm --filter @app/web dev | build | lint | test | typecheck` all green. Production build = 306 kB JS / 15 kB CSS.
+> - **Stack deviations from the original M0 plan:**
+>   - **Tailwind v3** instead of v4 — shadcn/ui has the most mature support for v3 today; v4 migration deferred.
+>   - **No TanStack Router** — overkill for two M0 screens. A tiny `Route` enum + state lives in `App.tsx`. React Router (per TECH_STACK §2.6) lands when M1 adds the Character Sheet + detail screens.
+>   - **Vite 5** (not 6) — vitest 2.x pins vite 5, and dual-version resolution failed under `exactOptionalPropertyTypes`. Bump together when vitest releases its vite-6 line.
+> - **shadcn/ui:** `components.json` committed; `cn()` util in `src/lib/utils.ts`; vendored `button`, `dialog`, `input` primitives verbatim under `src/components/ui/` (CLAUDE.md rule: never hand-edited). Token set = shadcn default (Zinc); CSS vars in `src/index.css`. Dark mode forced on `<html class="dark">` for now — full theme toggle is an R7 task.
+> - **Persistence:** Dexie DB `dnd-inv` with one object store per entity reserved at v1 (`meta`, `users`, `parties`, `memberships`, `characters`, `stashes`, `items`, `currencies`, `catalog`, `log`). M0 only writes to `meta` under key `appState` — entity stores are pre-declared so M1 can switch to per-entity rows via a `version().stores()` bump rather than a rewrite.
+> - **Debounced save:** `createDebouncedSaver(250ms)` coalesces rapid dispatches. `flushPendingPersist()` exposed for tests + future `beforeunload` handler.
+> - **Store invariant:** every mutation goes through `dispatch(action)`, which appends a typed `TransactionLogEntry` and triggers the debounced save. UI never writes store state directly. Reducer is pure `(state, action, entry) → { state, entry }`; M0 ships only the no-op path. M1 adds `case` arms per action.
+> - **Tests (9 passing):** `src/db/persistence.test.ts` covers load/save round-trip, wipe, and debounce coalescing (via `fake-indexeddb`). `src/store/reducer.test.ts` covers log append, persistence trigger, and ordering.
+> - **Rules stubs:** 8 files in `packages/rules/src/` — `capacity`, `attunement`, `charges`, `weight`, `hoard`, `validation`, `pricing`, `search`. Each exports typed signatures only and throws `not-implemented (<milestone>)` at runtime. Barrel `index.ts` namespace-exports them all. `currency.ts` and `inventory.ts` deliberately not stubbed — they get real implementations in M4/M5 per `MVP.md` §8.
+> - **README:** added with private-use disclaimer (no PHB/DMG redistribution).
+>
+> **Followups for M1:**
+> - Replace the placeholder `AppState = unknown` in `src/store/types.ts` with `z.infer<>` from `@app/shared` once the Zod schemas exist.
+> - Decide on a real router (React Router data-mode per TECH_STACK §2.6) before adding the Character Sheet — the current `Route` enum is a deliberate two-screen stopgap.
+> - Tidy duplicated devDeps across `packages/*/package.json` (still pending from the earlier M0 chunk).
+> - **Open question for M1:** auto-create a default Storage stash on character creation, or zero? (Listed under Open Questions §11.)
 
 ---
 

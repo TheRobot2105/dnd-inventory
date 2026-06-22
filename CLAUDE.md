@@ -13,7 +13,7 @@ A **D&D 5e (2024 rules) inventory management web app**, intended for private use
 
 If you find anything in code that contradicts these docs, **the docs win** — update the code or surface the conflict.
 
-- `docs/roadmap.md` is only for visualization and is no source of truth. Always refer to sources of truth.
+- `docs/roadmap.md` is only for visualization and is no source of truth. Always refer to sources of truth (OUTLINE.md, MVP.md, TECH_STACK.md).
 
 ## Rules
 
