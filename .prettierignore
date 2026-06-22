@@ -1,0 +1,10 @@
+node_modules
+dist
+build
+coverage
+pnpm-lock.yaml
+*.tsbuildinfo
+
+# docs are hand-curated — don't reflow markdown
+CLAUDE.md
+docs/

@@ -17,23 +17,23 @@ Mirrors `MVP.md` §11 (M0–M7). Each milestone has a trailing **Notes** block f
 App boots; welcome empty state; settings page with wipe; logging plumbing in place.
 
 **Repo & tooling**
-- [ ] pnpm workspace root (`pnpm-workspace.yaml`, root `package.json`)
+- [x] pnpm workspace root (`pnpm-workspace.yaml`, root `package.json`)
 - [ ] `apps/web` Vite + React 18 + TypeScript app scaffolded
-- [ ] `packages/shared` package created (empty placeholder index)
-- [ ] `packages/rules` package created (empty placeholder index)
-- [ ] `packages/seeds` package created (empty placeholder index)
-- [ ] `infra/docker/` directory created with placeholder README
-- [ ] Root `tsconfig.base.json` with `strict`, `noUncheckedIndexedAccess`, `noImplicitOverride`
-- [ ] Per-package `tsconfig.json` extending base
-- [ ] ESLint config (flat config) with TS + React rules
-- [ ] Prettier config + `.editorconfig`
-- [ ] Vitest config at workspace root + `apps/web`
-- [ ] `pnpm typecheck` script wired across workspace
+- [x] `packages/shared` package created (empty placeholder index)
+- [x] `packages/rules` package created (empty placeholder index)
+- [x] `packages/seeds` package created (empty placeholder index)
+- [x] `infra/docker/` directory created with placeholder README
+- [x] Root `tsconfig.base.json` with `strict`, `noUncheckedIndexedAccess`, `noImplicitOverride`
+- [x] Per-package `tsconfig.json` extending base
+- [~] ESLint config (flat config) with TS + React rules
+- [x] Prettier config + `.editorconfig`
+- [~] Vitest config at workspace root + `apps/web`
+- [x] `pnpm typecheck` script wired across workspace
 - [ ] `pnpm --filter @app/web dev` runs the empty app
 - [ ] `pnpm --filter @app/web build` produces a production bundle
 - [ ] `pnpm --filter @app/web lint` passes on empty scaffold
 - [ ] `pnpm --filter @app/web test` runs (no tests yet, exits 0)
-- [ ] CI-friendly `.gitignore` (node_modules, dist, .turbo, coverage)
+- [x] CI-friendly `.gitignore` (node_modules, dist, .turbo, coverage)
 - [ ] README with private-use disclaimer (per `../CLAUDE.md` — no PHB/DMG redistribution)
 
 **App shell**
@@ -81,7 +81,13 @@ App boots; welcome empty state; settings page with wipe; logging plumbing in pla
 
 > _Free-form progress log. Add dated entries, decisions, blockers, links to PRs, etc._
 >
-> -
+> **2026-06-22 — Workspace shell scaffolded.** pnpm 11.8.0 (installed via `npm i -g pnpm`), Node 24.17.0. Root `package.json`, `pnpm-workspace.yaml`, three empty `packages/*` (`@app/shared`, `@app/rules`, `@app/seeds`) + `apps/.gitkeep` + `infra/docker/.gitkeep`. TS strict base + per-package configs. ESLint flat config bans `any` per CLAUDE.md. Prettier + `.editorconfig`. Vitest wired with `--passWithNoTests` for the empty-scaffold phase. `pnpm typecheck | lint | test | format:check` all green.
+>
+> **Open items deferred to next M0 chunk:** `apps/web` scaffold (Vite + React + Tailwind v4 + shadcn + TanStack Router); Dexie + Zustand + Immer plumbing; Welcome + Settings screens; 8 rules-module stubs; React-specific ESLint rules; Vitest config in `apps/web`; private-use README.
+>
+> **Issues noted:**
+> - An IDE plugin keeps re-adding an `allowBuilds:` block to `pnpm-workspace.yaml`. Harmless — pnpm 11 uses `onlyBuiltDependencies` (also present). Likely a pnpm VS Code extension; investigate or disable.
+> - Dev-deps (`eslint`, `typescript`, `typescript-eslint`, `@eslint/js`, `vitest`, `@types/node`) are duplicated in every `packages/*/package.json`. Works (pnpm hoists), but cleaner pattern is root-only via `-w`. Tidy when adding `apps/web`.
 
 ---
 

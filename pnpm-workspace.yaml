@@ -1,0 +1,11 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+allowBuilds:
+  esbuild: true
+
+# esbuild ships a postinstall to fetch its native binary.
+# Allow it; deny everything else by default.
+onlyBuiltDependencies:
+  - esbuild
