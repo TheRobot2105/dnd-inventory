@@ -254,7 +254,7 @@ No HP, spells, AC, proficiencies in v1.
 - id, partyId (required — every action happens in some party, even party-of-one), sessionId (nullable), timestamp, actorUserId, actorRole (`dm` | `player` | `banker` — captures which hat the actor was wearing)
 - **type + payload as a discriminated union** (each `type` has a typed `payload` shape):
   - `transfer` → `{ itemInstanceId, quantity, fromStashId, toStashId }`
-  - `acquire` → `{ itemInstanceId, quantity, source: "hoard" | "purchase" | "custom-create" | "duplicate" }`
+  - `acquire` → `{ itemInstanceId, quantity, source: "hoard" | "purchase" | "catalog-add" | "custom-create" | "duplicate" }`
   - `consume` → `{ itemInstanceId, quantity }`
   - `purchase` / `sale` → `{ itemInstanceId, quantity, currencyDelta: CurrencyDelta, shopId }`
   - `attune` / `unattune` → `{ itemInstanceId, characterId }`
@@ -262,6 +262,7 @@ No HP, spells, AC, proficiencies in v1.
   - `identify` → `{ itemInstanceId, previousHint?, newHint? }`
   - `recharge` → `{ itemInstanceId, from, to, trigger: "dawn" | "dusk" | "long-rest" | "short-rest" | "manual" }`
   - `use-charge` → `{ itemInstanceId, amount }`
+  - `edit-item-instance` → `{ itemInstanceId, changedFields: ("customName" | "notes" | "identified" | "equipped" | "attuned" | "currentCharges" | "conditionOverrides")[] }` — generic per-instance editor for fields that don't have a dedicated TxType. The full new value lives on the instance itself; only the changed field names are logged (mirrors `edit-homebrew`).
   - `currency-change` → `{ stashId, delta: CurrencyDelta, reason?: "deposit" | "withdraw" | "split-evenly" | "gameplay-drain" | "convert" }`
   - `join-party` / `leave-party` → `{ partyId, characterId? }`
   - `dm-transfer` → `{ fromUserId, toUserId }`
@@ -270,9 +271,12 @@ No HP, spells, AC, proficiencies in v1.
   - `revoke-banker` → `{ formerBankerUserId, reason: "manual" | "left-party" | "kicked" | "reassigned" }`
   - `create-character` → `{ characterId, name }`
   - `delete-character` → `{ characterId, name, lastSessionId? }`
+  - `rename-character` → `{ characterId, oldName, newName }` — dedicated type for the most common character edit; mirrors `rename-stash` / `rename-party`.
+  - `edit-character` → `{ characterId, changedFields: ("species" | "class" | "level" | "str" | "maxAttunement" | "encumbranceRule")[] }` — catch-all for the remaining mutable character fields per §3.3 + §8.1.
   - `create-stash` → `{ stashId, scope, name, ownerCharacterId? }`
   - `rename-stash` → `{ stashId, oldName, newName }`
   - `delete-stash` → `{ stashId, name, itemCount, currencyTotalCp }` — `delete-stash` records the snapshot at deletion time so the audit trail explains where items went (they're moved to Recovered Loot or the owning character's Inventory before deletion; the move is its own `transfer` log entry).
+  - `rename-party` → `{ partyId, oldName, newName }`
   - `create-homebrew` → `{ definitionId, name }`
   - `edit-homebrew` → `{ definitionId, changedFields: string[] }`
   - `delete-homebrew` → `{ definitionId, name }`

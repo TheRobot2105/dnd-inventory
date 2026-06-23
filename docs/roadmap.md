@@ -244,8 +244,73 @@ PHB seed loads; Catalog Browser; add items to a stash; auto-stack; quantity edit
 > - `create-stash` / `rename-stash` / `delete-stash` actions + reducer.
 > - `delete-stash` invariant: items flow to Recovered Loot before the stash + its CurrencyHolding are removed (MVP §5 flow #12).
 > - Storage tab gains the card list + detail screen.
-> - **Propose OUTLINE §4 update** for `edit-item-instance` (and possibly `rename-character` / `rename-party` per M7).
 > - shadcn `tabs` primitive when CharacterSheet's hand-rolled tab nav starts pulling its weight (M3 adds Storage interaction, which makes the tab UX more meaningful).
+>
+> **2026-06-23 — OUTLINE §4 update landed (additive, no breaking changes).** Resolved the two open spec items flagged above without any code change:
+> - **Added `edit-item-instance`** to the TxType union with a `changedFields` enum (`customName | notes | identified | equipped | attuned | currentCharges | conditionOverrides`). Mirrors `edit-homebrew` shape — only field names are logged; full new value lives on the instance. Unblocks the deferred Item Detail screen.
+> - **Added `rename-character`** (dedicated rename type) **and `edit-character`** (catch-all for species/class/level/STR/maxAttunement/encumbranceRule). Removes the M7 `NOTE: not yet in OUTLINE §4` blockers.
+> - **Added `rename-party`** for symmetry with `rename-stash`.
+> - **Extended `acquire.source` enum** with `"catalog-add"` alongside the existing `"hoard" | "purchase" | "custom-create" | "duplicate"`. M2's catalog dispatch path will switch from `"custom-create"` (misuse) to `"catalog-add"` in M2.5; existing persisted logs remain valid.
+>
+> This sets up the **M2.5 mini-milestone** below — code catches up to the spec before M3 starts on stash CRUD.
+
+---
+
+### M2.5 — Spec cleanup + Item Detail
+
+Mini-milestone bridging M2 → M3. Closes the M2 deferred items now that OUTLINE §4 has been amended (see M2 Notes, 2026-06-23 entry). Tight scope on purpose — no new entities, no new screens beyond Item Detail. Lands the `"catalog-add"` rename and the `edit-item-instance` action so M3 can focus purely on stash CRUD.
+
+**`acquire.source` rename: `"custom-create"` → `"catalog-add"`**
+- [ ] Extend `acquireEntry` Zod schema in `packages/shared/src/schemas/transactionLog.ts` to accept `"catalog-add"` (additive; keep `"custom-create"` valid so existing persisted logs still parse)
+- [ ] Update `CatalogPicker.tsx` dispatch site to use `source: "catalog-add"`
+- [ ] Update `StashItemsTable.tsx` re-acquire (+) button to use `source: "catalog-add"`
+- [ ] Grep any other call sites passing `source: "custom-create"` for catalog-add semantics; update them
+- [ ] Update tests asserting `source: "custom-create"` for catalog-add to expect `"catalog-add"`
+- [ ] Round-trip test: an `AppState` exported with M2-vintage `"custom-create"` source entries imports cleanly under the extended schema (no migration step required)
+
+**`edit-item-instance` reducer action (per OUTLINE §4)**
+- [ ] `editItemInstanceEntry` Zod schema variant in `transactionLog.ts` matching the OUTLINE shape (`{ itemInstanceId, changedFields: (…)[] }`)
+- [ ] `edit-item-instance` action type + payload Zod schema (full new values per editable field; reducer extracts `changedFields` from the diff)
+- [ ] Reducer case: validate target instance exists; apply patch via Immer; log `changedFields` only for fields that actually changed
+- [ ] Invariant test: rejects edits to fields owned by `ItemDefinition` (rarity, weight, cost, …) — only `ItemInstance`-owned fields are mutable
+- [ ] Invariant test: rejects unknown `itemInstanceId`
+- [ ] Invariant test: no-op edit (same values) does NOT append a log entry (or appends with `changedFields: []` — pick one, document)
+- [ ] Reducer test: edit `customName` only → log entry `changedFields: ["customName"]`
+- [ ] Reducer test: edit `notes` only → log entry `changedFields: ["notes"]`
+- [ ] Reducer test: edit both → single log entry with both field names
+
+**Item Detail screen (per MVP §7 screen 4 + OUTLINE §5 screen 4)**
+- [ ] New route `/item/:itemInstanceId` mounted under `RootLayout`
+- [ ] `ItemDetail.tsx` — header (definition name, source badge, category), full description, weight, cost, quantity (read-only — qty adjusts still happen in the stash table)
+- [ ] Editable fields (MVP-relevant only): `customName`, `notes`. Other `edit-item-instance` enum members (`identified` / `equipped` / `attuned` / `currentCharges` / `conditionOverrides`) are scaffolded in the action but UI controls land in their proper milestones (R1 / R2)
+- [ ] Form uses React Hook Form + Zod resolver (matches CreateCharacterForm pattern)
+- [ ] Submit dispatches `edit-item-instance`; success returns user to the source stash tab (or stays put with a saved toast — pick one)
+- [ ] `<Navigate to="/" replace />` when `:itemInstanceId` doesn't resolve to an instance
+- [ ] Click handler on `StashItemsTable` row name navigates to `/item/:id`
+- [ ] Component test: edit notes → save → reload page → notes persist + appear
+
+**Per-item history (first time live; covers OUTLINE §3.11)**
+- [ ] `<ItemHistory itemInstanceId={id} />` component renders log entries that reference this instance
+- [ ] Selector queries `state.log` for entries whose payload contains `itemInstanceId === id` (no separate `ItemHistory` table per OUTLINE §4)
+- [ ] Renders entry type + timestamp + actorRole + a short human summary per TxType
+- [ ] Component test: acquire → edit-item-instance → consume sequence produces 3 history rows in order
+- [ ] Note: log permission gating (owner + DM only per §8) lands in R4/R5 — single-user MVP shows the full slice
+
+**Out of M2.5 (deferred to their proper milestones)**
+- [-] `rename-character` / `edit-character` / `rename-party` action implementations — spec'd in OUTLINE now, but no UI needs them yet. Move from M7 once Settings rename screens land (still M7 territory per MVP §7 screen 9).
+- [-] Identification, equip/attune toggles, charge adjustment from Item Detail — R1 / R2 work.
+- [-] Edit history pruning / log retention — R5/R7.
+
+**Verification gate**
+- [ ] `pnpm -r --parallel typecheck` green
+- [ ] `pnpm --filter @app/web test` green (existing 45 + new ~12)
+- [ ] `pnpm --filter @app/web lint` green
+- [ ] `pnpm --filter @app/web build` succeeds; bundle delta < +30 kB JS
+- [ ] Manual smoke: add item → click name → edit notes → save → reload → notes persisted + show in history
+
+#### M2.5 — Notes
+
+> -
 
 ---
 
@@ -391,9 +456,9 @@ Export JSON; import with replace-all confirm. Log entries captured for all mutat
 - [ ] Settings UI shows current `version` and `seedVersion`
 
 **Character & party rename (per `MVP.md` §7 screen 9)**
-- [ ] `rename-character` action + payload schema — **NOTE: new TxType not yet in `OUTLINE.md` §4 — propose adding before implementing**
+- [ ] `rename-character` action + payload schema (OUTLINE §4: `{ characterId, oldName, newName }`)
 - [ ] `rename-character` reducer case + test (name updates, id stable, log entry recorded)
-- [ ] `rename-party` action + payload schema — **NOTE: new TxType not yet in `OUTLINE.md` §4 — propose adding before implementing**
+- [ ] `rename-party` action + payload schema (OUTLINE §4: `{ partyId, oldName, newName }`)
 - [ ] `rename-party` reducer case + test
 - [ ] Settings UI: Character name field with save
 - [ ] Settings UI: Party name field with save
