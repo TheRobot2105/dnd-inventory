@@ -205,6 +205,13 @@ const deleteStashEntry = z.object({
     name: z.string().min(1),
     itemCount: z.number().int().nonnegative(),
     currencyTotalCp: z.number().int().nonnegative(),
+    // Owning character at the moment of deletion. Present iff the
+    // deleted stash was character-scope (Storage). Absent for the
+    // protected party-scope / recovered-loot stashes (which `delete-stash`
+    // refuses anyway in M3, but the field stays optional so the schema
+    // doesn't have to fork by scope). M3-vintage log entries written
+    // before this field was added still validate (additive change).
+    ownerCharacterId: z.string().min(1).optional(),
   }),
 });
 

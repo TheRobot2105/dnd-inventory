@@ -5,7 +5,7 @@ import { ItemHistory } from './ItemHistory';
 import { useStore } from '@/store';
 import { wipeAll } from '@/db/wipe';
 
-import { makeEntry } from '@/test/fixtures';
+import { bootstrap, makeEntry } from '@/test/fixtures';
 
 beforeEach(async () => {
   useStore.setState({ appState: null, log: [] });
@@ -117,10 +117,222 @@ describe('ItemHistory', () => {
     expect(within(items[0]!).getByText(/source: catalog-add/i)).toBeInTheDocument();
   });
 
-  it('renders a transfer entry summary with stash names from state (M3)', () => {
-    // Seed state.stashes so the summary can look up names.
+  it('renders a transfer entry summary with character-prefixed stash names (M3)', () => {
+    // Use the canonical bootstrap so a real character exists for the
+    // character-scope source stash to reference. The destination is the
+    // auto-provisioned Recovered Loot (no character prefix).
+    const { characterId, recoveredLootStashId } = bootstrap();
+    // Create a Storage stash via the dispatch so it carries the canonical
+    // ownerCharacterId.
+    useStore.getState().dispatch({
+      type: 'create-stash',
+      payload: { ownerCharacterId: characterId, name: 'Chest at home' },
+    });
+    const fromStashId = useStore.getState().appState!.stashes.at(-1)!.id;
+
+    // Replace the auto-generated create-stash log entry with our transfer
+    // fixture so the assertion targets exactly one row.
+    useStore.setState({
+      log: [
+        makeEntry('transfer', {
+          itemInstanceId: 'item-1',
+          quantity: 3,
+          fromStashId,
+          toStashId: recoveredLootStashId,
+        }),
+      ],
+    });
+
+    render(<ItemHistory itemInstanceId="item-1" />);
+    const items = screen.getAllByRole('listitem');
+    expect(items).toHaveLength(1);
+    // Character-scope source → "Thorin — Chest at home". Recovered Loot
+    // is party-scope → bare "Recovered Loot" (no character prefix).
+    expect(
+      within(items[0]!).getByText(/Transferred ×3 from Thorin — Chest at home to Recovered Loot/i),
+    ).toBeInTheDocument();
+  });
+
+  it('falls back to bare stash name when the owning character is missing', () => {
+    // Edge case: character-scope stash whose ownerCharacterId doesn't
+    // resolve (shouldn't happen in MVP, but the renderer is defensive).
     const fromStashId = 'stash-from';
-    const toStashId = 'stash-to';
+    useStore.setState({
+      appState: {
+        version: 1,
+        seedVersion: 0,
+        user: { id: 'u', displayName: 'You', createdAt: new Date().toISOString() },
+        party: {
+          id: 'p',
+          name: 'P',
+          ownerUserId: 'u',
+          inviteCode: 'INV-ABCDEF',
+          recoveredLootStashId: 'stash-to',
+          bankerUserId: null,
+          isSoloShortcut: true,
+          createdAt: new Date().toISOString(),
+        },
+        memberships: [],
+        characters: [],
+        stashes: [
+          {
+            id: fromStashId,
+            scope: 'character',
+            name: 'Chest at home',
+            ownerCharacterId: 'missing-char',
+            partyId: null,
+            isCarried: false,
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: 'stash-to',
+            scope: 'recovered-loot',
+            name: 'Recovered Loot',
+            ownerCharacterId: null,
+            partyId: 'p',
+            isCarried: false,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+        catalog: [],
+        items: [],
+        currencies: [],
+        log: [],
+      },
+      log: [
+        makeEntry('transfer', {
+          itemInstanceId: 'item-1',
+          quantity: 1,
+          fromStashId,
+          toStashId: 'stash-to',
+        }),
+      ],
+    });
+
+    render(<ItemHistory itemInstanceId="item-1" />);
+    expect(
+      within(screen.getAllByRole('listitem')[0]!).getByText(
+        /Transferred ×1 from Chest at home to Recovered Loot/i,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('falls back to a short uuid when the source stash has been deleted (M3)', () => {
+    // No stashes in state — the source has been removed (delete-cascade
+    // synthesizes the transfer entry, then the stash row goes away).
+    // AND there's no corresponding `delete-stash` log entry either (the
+    // log was wiped in this test fixture).
+    useStore.setState({
+      log: [
+        makeEntry('transfer', {
+          itemInstanceId: 'item-1',
+          quantity: 2,
+          fromStashId: 'abcdef12-0000-0000-0000-000000000000',
+          toStashId: 'fedcba98-0000-0000-0000-000000000000',
+        }),
+      ],
+    });
+
+    render(<ItemHistory itemInstanceId="item-1" />);
+    const items = screen.getAllByRole('listitem');
+    expect(items).toHaveLength(1);
+    // Both ids fall back to their first-8 prefix.
+    expect(within(items[0]!).getByText(/Transferred ×2 from abcdef12 to fedcba98/i))
+      .toBeInTheDocument();
+  });
+
+  it('resolves a deleted source stash via the delete-stash log entry with character prefix (M3 polish)', () => {
+    // The Stash row is gone, but the delete-stash log entry still
+    // carries the original `name` and `ownerCharacterId`. Render as
+    // "{character.name} — {name} (deleted)" so the history line is as
+    // informative as a live-stash row.
+    const characterId = 'c1';
+    const fromStashId = 'abcdef12-0000-0000-0000-000000000000';
+    const toStashId = 'fedcba98-0000-0000-0000-000000000000';
+    useStore.setState({
+      appState: {
+        version: 1,
+        seedVersion: 0,
+        user: { id: 'u', displayName: 'You', createdAt: new Date().toISOString() },
+        party: {
+          id: 'p',
+          name: 'P',
+          ownerUserId: 'u',
+          inviteCode: 'INV-ABCDEF',
+          recoveredLootStashId: toStashId,
+          bankerUserId: null,
+          isSoloShortcut: true,
+          createdAt: new Date().toISOString(),
+        },
+        memberships: [],
+        characters: [
+          {
+            id: characterId,
+            partyId: 'p',
+            ownerUserId: 'u',
+            name: 'Thorin',
+            species: 'Dwarf',
+            class: 'Fighter',
+            level: 3,
+            abilityScores: { STR: 16 },
+            maxAttunement: 3,
+            encumbranceRule: 'off',
+            inventoryStashId: 'some-inventory-id',
+          },
+        ],
+        // Note: no stash row for `fromStashId` — it's been deleted.
+        // Only Recovered Loot survives.
+        stashes: [
+          {
+            id: toStashId,
+            scope: 'recovered-loot',
+            name: 'Recovered Loot',
+            ownerCharacterId: null,
+            partyId: 'p',
+            isCarried: false,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+        catalog: [],
+        items: [],
+        currencies: [],
+        log: [],
+      },
+      log: [
+        makeEntry('transfer', {
+          itemInstanceId: 'item-1',
+          quantity: 1,
+          fromStashId,
+          toStashId,
+        }),
+        // The delete-stash entry that retired `fromStashId`, with the
+        // owning character captured per the M3 schema amendment.
+        makeEntry('delete-stash', {
+          stashId: fromStashId,
+          name: 'Vault of Waterdeep',
+          itemCount: 1,
+          currencyTotalCp: 0,
+          ownerCharacterId: characterId,
+        }),
+      ],
+    });
+
+    render(<ItemHistory itemInstanceId="item-1" />);
+    const items = screen.getAllByRole('listitem');
+    expect(items).toHaveLength(1);
+    expect(
+      within(items[0]!).getByText(
+        /Transferred ×1 from Thorin — Vault of Waterdeep \(deleted\) to Recovered Loot/i,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('omits the character prefix when an old delete-stash entry has no ownerCharacterId (back-compat)', () => {
+    // Simulates a pre-amendment log entry (M3 vintage written before
+    // the ownerCharacterId field was added). Still renders the bare
+    // "{name} (deleted)" so existing Dexie blobs stay legible.
+    const fromStashId = 'abcdef12-0000-0000-0000-000000000000';
+    const toStashId = 'fedcba98-0000-0000-0000-000000000000';
     useStore.setState({
       appState: {
         version: 1,
@@ -140,15 +352,6 @@ describe('ItemHistory', () => {
         characters: [],
         stashes: [
           {
-            id: fromStashId,
-            scope: 'character',
-            name: 'Chest at home',
-            ownerCharacterId: 'c1',
-            partyId: null,
-            isCarried: false,
-            createdAt: new Date().toISOString(),
-          },
-          {
             id: toStashId,
             scope: 'recovered-loot',
             name: 'Recovered Loot',
@@ -166,39 +369,25 @@ describe('ItemHistory', () => {
       log: [
         makeEntry('transfer', {
           itemInstanceId: 'item-1',
-          quantity: 3,
+          quantity: 1,
           fromStashId,
           toStashId,
         }),
-      ],
-    });
-
-    render(<ItemHistory itemInstanceId="item-1" />);
-    const items = screen.getAllByRole('listitem');
-    expect(items).toHaveLength(1);
-    expect(within(items[0]!).getByText(/Transferred ×3 from Chest at home to Recovered Loot/i))
-      .toBeInTheDocument();
-  });
-
-  it('falls back to a short uuid when the source stash has been deleted (M3)', () => {
-    // No stashes in state — the source has been removed (delete-cascade
-    // synthesizes the transfer entry, then the stash row goes away).
-    useStore.setState({
-      log: [
-        makeEntry('transfer', {
-          itemInstanceId: 'item-1',
-          quantity: 2,
-          fromStashId: 'abcdef12-0000-0000-0000-000000000000',
-          toStashId: 'fedcba98-0000-0000-0000-000000000000',
+        makeEntry('delete-stash', {
+          stashId: fromStashId,
+          name: 'Vault of Waterdeep',
+          itemCount: 1,
+          currencyTotalCp: 0,
+          // ownerCharacterId intentionally absent.
         }),
       ],
     });
 
     render(<ItemHistory itemInstanceId="item-1" />);
-    const items = screen.getAllByRole('listitem');
-    expect(items).toHaveLength(1);
-    // Both ids fall back to their first-8 prefix.
-    expect(within(items[0]!).getByText(/Transferred ×2 from abcdef12 to fedcba98/i))
-      .toBeInTheDocument();
+    expect(
+      within(screen.getAllByRole('listitem')[0]!).getByText(
+        /Transferred ×1 from Vault of Waterdeep \(deleted\) to Recovered Loot/i,
+      ),
+    ).toBeInTheDocument();
   });
 });

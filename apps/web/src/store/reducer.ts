@@ -775,6 +775,14 @@ function deleteStash(
           name: stash.name,
           itemCount,
           currencyTotalCp,
+          // Capture the owning character so post-delete history views
+          // can render the character-prefixed label "{character.name} —
+          // {stash.name} (deleted)". M3 only deletes character-scope
+          // stashes (party / recovered-loot are protected), so this is
+          // always present in practice — but the schema keeps it
+          // optional to match the protected-stash branch types and
+          // allow back-compat with pre-amendment entries.
+          ownerCharacterId: stash.ownerCharacterId,
         },
       },
     ],

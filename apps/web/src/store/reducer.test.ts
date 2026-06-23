@@ -1114,6 +1114,7 @@ describe('reducer: delete-stash (M3)', () => {
         name: 'Chest at home',
         itemCount: 0,
         currencyTotalCp: 0,
+        ownerCharacterId: useStore.getState().appState!.characters[0]!.id,
       });
     }
   });

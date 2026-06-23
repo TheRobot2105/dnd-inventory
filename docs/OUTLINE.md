@@ -275,7 +275,7 @@ No HP, spells, AC, proficiencies in v1.
   - `edit-character` → `{ characterId, changedFields: ("species" | "class" | "level" | "str" | "maxAttunement" | "encumbranceRule")[] }` — catch-all for the remaining mutable character fields per §3.3 + §8.1.
   - `create-stash` → `{ stashId, scope, name, ownerCharacterId? }`
   - `rename-stash` → `{ stashId, oldName, newName }`
-  - `delete-stash` → `{ stashId, name, itemCount, currencyTotalCp }` — `delete-stash` records the snapshot at deletion time so the audit trail explains where items went (they're moved to Recovered Loot or the owning character's Inventory before deletion; the move is its own `transfer` log entry).
+  - `delete-stash` → `{ stashId, name, itemCount, currencyTotalCp, ownerCharacterId? }` — `delete-stash` records the snapshot at deletion time so the audit trail explains where items went (they're moved to Recovered Loot or the owning character's Inventory before deletion; the move is its own `transfer` log entry). `ownerCharacterId` is present iff the deleted stash was character-scope (Storage) — captured so post-delete history views can render the original owner alongside the stash name (added in M3 after the initial cut).
   - `rename-party` → `{ partyId, oldName, newName }`
   - `create-homebrew` → `{ definitionId, name }`
   - `edit-homebrew` → `{ definitionId, changedFields: string[] }`
