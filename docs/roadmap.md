@@ -125,38 +125,56 @@ App boots; welcome empty state; settings page with wipe; logging plumbing in pla
 "Create your character" form provisions User + Party + memberships + Character + Inventory / Party Stash / Recovered Loot.
 
 **Schemas (`packages/shared/schemas/`)**
-- [ ] `user.schema.ts` — Zod schema + inferred type
-- [ ] `party.schema.ts` — Zod schema + inferred type
-- [ ] `partyMembership.schema.ts` — Zod schema with composite-key invariant test
-- [ ] `character.schema.ts` — Zod schema (STR only; placeholder fields per MVP)
-- [ ] `stash.schema.ts` — Zod schema with `scope` discriminated union
-- [ ] `itemDefinition.schema.ts` — Zod schema (no DMG fields yet)
-- [ ] `itemInstance.schema.ts` — Zod schema (hard-coded MVP placeholders)
-- [ ] `currencyHolding.schema.ts` — Zod schema
-- [ ] `transactionLog.schema.ts` — Zod discriminated union over `TxType`
-- [ ] `appState.schema.ts` — root Zod schema composing all above
-- [ ] `index.ts` — barrel export
-- [ ] Round-trip test: parse → serialize → parse equals input
+- [x] `user.schema.ts` — Zod schema + inferred type
+- [x] `party.schema.ts` — Zod schema + inferred type
+- [x] `partyMembership.schema.ts` — Zod schema with composite-key invariant test
+- [x] `character.schema.ts` — Zod schema (STR only; placeholder fields per MVP)
+- [x] `stash.schema.ts` — Zod schema with `scope` discriminated union
+- [x] `itemDefinition.schema.ts` — Zod schema (no DMG fields yet)
+- [x] `itemInstance.schema.ts` — Zod schema (hard-coded MVP placeholders)
+- [x] `currencyHolding.schema.ts` — Zod schema
+- [x] `transactionLog.schema.ts` — Zod discriminated union over `TxType`
+- [x] `appState.schema.ts` — root Zod schema composing all above
+- [x] `index.ts` — barrel export
+- [x] Round-trip test: parse → serialize → parse equals input
 
 **Reducer actions**
-- [ ] `create-character` action type + payload schema
-- [ ] `create-character` reducer case provisions User (if absent), Party, 2 memberships, Character, Inventory stash, Party Stash, Recovered Loot stash, 3 CurrencyHoldings
-- [ ] Invariant test: exactly one party, two memberships (dm + player), one character
-- [ ] Invariant test: `Character.inventoryStashId` points at an `isCarried: true` stash
-- [ ] Invariant test: `Party.recoveredLootStashId` points at the recovered-loot stash
-- [ ] Invariant test: log entry appended with `type: "create-character"`
+- [x] `create-character` action type + payload schema
+- [x] `create-character` reducer case provisions User (if absent), Party, 2 memberships, Character, Inventory stash, Party Stash, Recovered Loot stash, 3 CurrencyHoldings
+- [x] Invariant test: exactly one party, two memberships (dm + player), one character
+- [x] Invariant test: `Character.inventoryStashId` points at an `isCarried: true` stash
+- [x] Invariant test: `Party.recoveredLootStashId` points at the recovered-loot stash
+- [x] Invariant test: log entry appended with `type: "create-character"`
 
 **UI**
-- [ ] `CreateCharacterForm.tsx` — name, species, class, level, STR fields with Zod-validated form
-- [ ] Submit dispatches `create-character` action
-- [ ] Welcome screen routes to form, form routes to Character Sheet on success
-- [ ] `CharacterSheet.tsx` — header (name/species/class/level/STR)
-- [ ] Tab navigation: Inventory / Storage / Party Stash / Recovered Loot (empty bodies for now)
-- [ ] `CharacterSheet.test.tsx` — renders header from store after `create-character`
+- [x] `CreateCharacterForm.tsx` — name, species, class, level, STR fields with Zod-validated form
+- [x] Submit dispatches `create-character` action
+- [x] Welcome screen routes to form, form routes to Character Sheet on success
+- [x] `CharacterSheet.tsx` — header (name/species/class/level/STR)
+- [x] Tab navigation: Inventory / Storage / Party Stash / Recovered Loot (empty bodies for now)
+- [x] `CharacterSheet.test.tsx` — renders header from store after `create-character`
 
 #### M1 — Notes
 
-> -
+> **2026-06-23 — M1 complete.**
+> - **Zod schemas** for the full MVP `AppState` (`packages/shared/src/schemas/`) — 10 entity schemas + `appState.schema.ts` composing them. `transactionLog.ts` is a discriminated union currently with one variant (`create-character`); M2+ extends both the union and the reducer in lockstep. Round-trip test (3 assertions) confirms parse → serialize → parse is identity, and that bad `scope` values are rejected.
+> - **Store typed** — `apps/web/src/store/types.ts` now re-exports `AppState = AppStateShape | null` and the `Action` discriminated union. `LogEntrySlice` (in `reducer.ts`) is a distributed conditional over `TransactionLogEntry` so adding future variants preserves type-narrowing per case.
+> - **`create-character` reducer** — pure; provisions user + party + 2 memberships + character + 3 stashes (Inventory carried, Party Stash, Recovered Loot) + 3 CurrencyHoldings + a typed log entry. Rejects double-create with "already exists". 8 invariant tests; new persisted state passes `appStateSchema.parse(...)`.
+> - **React Router v7 (data router mode)** — `createBrowserRouter` mounted in `App.tsx`; routes `/`, `/create-character`, `/character/:id`, `/settings` nested under `RootLayout`. Replaced the M0 `Route` enum stopgap entirely (file deleted). `*` falls back to `Navigate to="/"`.
+> - **CreateCharacterForm** — React Hook Form + Zod resolver. Fields: name, species, class, level (1–20), STR (1–30). Errors render inline with `role="alert"`. Submit dispatches `create-character`, then navigates to `/character/:id`.
+> - **CharacterSheet** — header (name/species/class/level/STR) + 4 ARIA tabs with placeholder bodies pointing at the future milestones that fill them. `<Navigate to="/" replace />` when the URL id doesn't match any character.
+> - **Welcome** auto-redirects to the existing character when one exists; otherwise shows the CTA.
+> - **Bootstrap hydration** — `src/store/hydrate.ts` reads the persisted blob, validates with a `{ appState, log }` wrapper schema, and pushes into the store BEFORE the first render in `main.tsx`. Malformed blobs warn and fall back to empty (no crash on stale data).
+> - **Tests:** 18 passing (3 schema, 1 store plumbing, 8 create-character reducer/invariants, 3 CharacterSheet + 3 persistence still from M0).
+> - **Build:** 565 kB JS / 15.4 kB CSS (gzip 179 kB / 4 kB). Code-splitting is a polish task (TECH_STACK §10) — fine for MVP.
+>
+> **Resolved open question (roadmap §Open Questions / OUTLINE §11):** characters land with **zero default Storage stashes**. The Storage tab stays empty until the user clicks "New Storage stash" in M3. Rationale: matches the MVP §5.2 wording ("auto-creates Inventory, Party Stash, Recovered Loot"); a default extra stash would always be deletable, which makes it churn rather than utility.
+>
+> **Followups for M2:**
+> - Catalog seed pipeline (`packages/seeds/`), `acquire` / `consume` actions, AddItemModal, Item Detail.
+> - `edit-item-instance` and the rename/character actions in M7 are noted in the roadmap as needing OUTLINE §4 updates before implementation — propose the spec change in M2.
+> - Tab state in CharacterSheet is local component state — fine for M1 since tab choice isn't persisted, but M2 may want to encode it in the URL (`?tab=inventory`) for shareable / browser-back-friendly behavior.
+> - Consider extracting the per-stash currency row component placeholder into M4 work rather than re-doing the placeholder bodies as full rows.
 
 ---
 
@@ -702,7 +720,7 @@ Track resolution before the relevant milestone ships. Each is a decision, not an
 - [ ] **Invite code lifetime** — decide: single-use vs reusable, time-bounded or not (impacts R4)
 - [ ] **Recovered-loot pruning** — decide: grow forever vs auto-expire stale items (impacts R4/R5)
 - [ ] **History detail level** — decide: ownership transitions only vs every edit on per-item history (impacts R5)
-- [ ] **Default Storage stash on character creation** — decide: auto-create one vs zero (impacts MVP M1 / R1 polish)
+- [x] **Default Storage stash on character creation** — decide: auto-create one vs zero (impacts MVP M1 / R1 polish). **Resolved 2026-06-23: zero.** Characters land with Inventory + Party Stash + Recovered Loot only; Storage tab is opt-in via M3's "New Storage stash". Matches MVP §5.2 wording.
 - [ ] **DM-as-player on creation** — decide: explicit prompt vs auto-add deletable player membership (impacts R4)
 
 #### Open Questions — Notes

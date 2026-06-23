@@ -1,30 +1,37 @@
-/**
- * AppState type re-export. In M0 this is a placeholder; the real type lands
- * in `@app/shared` once Zod schemas exist (M1). Defined as `unknown` so the
- * store + reducer plumbing can be exercised today without committing to a
- * shape — M1 replaces this single line with a `z.infer<>` of the root schema.
- */
-export type AppState = unknown;
+import type {
+  AppState as AppStateShape,
+  TransactionLogEntry as LogEntry,
+  TxType,
+} from '@app/shared';
 
 /**
- * Action shape. Action `type` strings correspond 1:1 to `TransactionLog.type`
- * values per CLAUDE.md / OUTLINE.md §4. M0 ships an internal `__noop` action
- * used only to validate the logging + persist hooks; real action types are
- * added per milestone.
+ * AppState — the typed root from `@app/shared`. The store models the
+ * pre-character-creation phase as `null`; M1's `create-character` is the
+ * first reducer case that populates the full object.
  */
-export interface Action {
-  type: string;
-  payload?: unknown;
-}
+export type AppState = AppStateShape | null;
 
 /**
- * Minimal TransactionLog shape for M0 plumbing. The Zod-validated full type
- * lands in `@app/shared/schemas/transactionLog.schema.ts` in M1 and replaces
- * this placeholder.
+ * Action — the union of every dispatchable mutation. M1 ships one:
+ * `create-character`. Adding a milestone means extending BOTH this union
+ * AND the `TransactionLogEntry` union in @app/shared (CLAUDE.md: action
+ * types correspond 1:1 to TransactionLog.type values).
+ *
+ * Note: action payloads here are intentionally a SUBSET of the
+ * corresponding log payload — the store middleware fills in the derived
+ * fields (characterId, inventoryStashId, partyStashId, …) at dispatch
+ * time, so the UI only supplies what the user actually entered.
  */
-export interface TransactionLogEntry {
-  id: string;
-  timestamp: string;
-  type: string;
-  payload: unknown;
-}
+export type Action = {
+  type: 'create-character';
+  payload: {
+    name: string;
+    species: string;
+    class: string;
+    level: number;
+    str: number;
+  };
+};
+
+export type TransactionLogEntry = LogEntry;
+export type { TxType };

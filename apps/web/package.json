@@ -15,7 +15,9 @@
     "@app/rules": "workspace:*",
     "@app/seeds": "workspace:*",
     "@app/shared": "workspace:*",
+    "@hookform/resolvers": "^5.4.0",
     "@radix-ui/react-dialog": "^1.1.4",
+    "@radix-ui/react-label": "^2.1.10",
     "@radix-ui/react-slot": "^1.1.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -24,7 +26,10 @@
     "lucide-react": "^0.469.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-hook-form": "^7.80.0",
+    "react-router-dom": "^7.18.0",
     "tailwind-merge": "^2.6.0",
+    "zod": "^4.4.3",
     "zustand": "^5.0.2"
   },
   "devDependencies": {

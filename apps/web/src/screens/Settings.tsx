@@ -1,4 +1,5 @@
 import { useState, type ReactElement } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -10,27 +11,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { wipeAll } from '@/db/wipe';
+import { useStore } from '@/store';
 
-// Build-time injected by Vite via the env variable in vite.config (defaults from package.json version).
+// TODO(M7): inject from build / package.json. Placeholder for now.
 const APP_VERSION = '0.0.0';
-
-interface SettingsProps {
-  onWipe: () => Promise<void> | void;
-}
 
 /**
  * MVP §7 screen 9 (Settings): app version, wipe data (with confirm).
- * Export/Import and Character/Party rename land in later milestones.
+ * Export/Import and Character/Party rename land in M7.
  */
-export function Settings({ onWipe }: SettingsProps): ReactElement {
+export function Settings(): ReactElement {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [wiping, setWiping] = useState(false);
+  const navigate = useNavigate();
 
   async function handleConfirmWipe(): Promise<void> {
     setWiping(true);
     try {
-      await onWipe();
+      await wipeAll();
+      // Also clear in-memory store so the redirect to Welcome sees an
+      // empty state without waiting for a reload.
+      useStore.getState().hydrate({ appState: null, log: [] });
       setConfirmOpen(false);
+      void navigate('/', { replace: true });
     } finally {
       setWiping(false);
     }
