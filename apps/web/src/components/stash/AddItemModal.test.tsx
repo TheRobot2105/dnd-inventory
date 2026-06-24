@@ -146,4 +146,27 @@ describe('AddItemModal Custom tab (M6)', () => {
       'true',
     );
   });
+
+  it('renders the HomebrewForm inline inside the parent modal (not as a nested Dialog)', async () => {
+    // Regression: M6 first cut nested a second Dialog inside the
+    // AddItemModal which broke navigation (cancel killed the parent;
+    // tab-switching couldn't show the form). Inline variant keeps the
+    // form fields under the parent's DialogContent so there is exactly
+    // ONE dialog on screen.
+    const user = userEvent.setup();
+    const { inventoryStashId } = bootstrap();
+    renderModal(inventoryStashId);
+
+    await user.click(screen.getByRole('tab', { name: /custom/i }));
+
+    // Exactly one dialog — the parent AddItemModal. The form fields
+    // live inside it; no second dialog is rendered.
+    const dialogs = screen.getAllByRole('dialog');
+    expect(dialogs).toHaveLength(1);
+    // And the form fields are present in the DOM under that single
+    // dialog (Name + Category + Create button all visible at once).
+    expect(screen.getByLabelText(/^name$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/category/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^create$/i })).toBeInTheDocument();
+  });
 });

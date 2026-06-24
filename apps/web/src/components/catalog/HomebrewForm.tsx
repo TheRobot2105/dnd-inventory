@@ -20,7 +20,7 @@ import type { HomebrewDefinitionInput, HomebrewDefinitionPatch } from '@/store/t
 import type { ItemCategory, ItemDefinition } from '@app/shared';
 
 /**
- * HomebrewForm (M6) — RHF + Zod modal for create / edit / duplicate of
+ * HomebrewForm (M6) — RHF + Zod form for create / edit / duplicate of
  * homebrew `ItemDefinition` rows. Three modes:
  *
  *   - **create** — fresh defaults; submit dispatches `create-homebrew`.
@@ -32,6 +32,23 @@ import type { ItemCategory, ItemDefinition } from '@app/shared';
  * On successful create, calls `onCreated(definitionId)` (if provided)
  * with the new id so the parent can chain a follow-up dispatch (e.g.
  * AddItemModal's Custom tab acquires the freshly-created definition).
+ *
+ * **Two render variants** so the same form logic + schema serves both
+ * standalone and embedded use cases without duplication:
+ *
+ *   - **`variant: 'modal'`** (default) — wraps the form in `<Dialog>`
+ *     with its own title/description. Used by `CatalogBrowser` for
+ *     create / edit / duplicate as a top-level modal.
+ *   - **`variant: 'inline'`** — renders just the fields + footer
+ *     buttons (no Dialog chrome). The parent owns the modal shell.
+ *     Used by `AddItemModal`'s Custom tab so the form lives **inside**
+ *     the AddItemModal rather than as a nested modal on top.
+ *
+ * Inline mode ignores the `open` prop — render lifecycle is controlled
+ * by the parent (typically by conditionally mounting the component or
+ * showing/hiding the surrounding container). It still calls
+ * `onOpenChange(false)` on Cancel + on successful submit so the parent
+ * can react (e.g. switch back to the Catalog tab on cancel).
  *
  * UI conventions follow the M3+ modal pattern documented in
  * `CreateStashModal` / `RenameStashModal`: reset-on-open, try/catch
@@ -52,9 +69,9 @@ const CATEGORY_OPTIONS: { value: ItemCategory; label: string }[] = [
 /**
  * Form schema. All fields are user-facing strings (RHF integrates with
  * `<input>` natively); coercion to the typed payload shape happens in
- * `toDispatchPayload`. Optional fields use empty-string sentinels rather
- * than `undefined` because RHF's `defaultValues` works most naturally
- * with stable string types.
+ * `formOutputToCreateInput` / `formOutputToEditPatch`. Optional fields
+ * use empty-string sentinels rather than `undefined` because RHF's
+ * `defaultValues` works most naturally with stable string types.
  */
 const formSchema = z.object({
   name: z
@@ -95,11 +112,19 @@ type FormValues = z.input<typeof formSchema>;
 type FormOutput = z.output<typeof formSchema>;
 
 export type HomebrewFormMode = 'create' | 'edit' | 'duplicate';
+export type HomebrewFormVariant = 'modal' | 'inline';
 
 interface HomebrewFormProps {
+  /** Required in `modal` variant; ignored in `inline` (parent controls
+   * the lifecycle via conditional render). */
   open: boolean;
+  /** Called when the user cancels OR after a successful submit. Parents
+   * use this to close the surrounding modal, switch tabs, etc. */
   onOpenChange: (open: boolean) => void;
   mode: HomebrewFormMode;
+  /** `'modal'` (default) wraps in `<Dialog>`; `'inline'` renders just
+   * the form fields + buttons so the parent owns the modal shell. */
+  variant?: HomebrewFormVariant;
   /** Required for `edit` (the row being edited) and `duplicate` (the
    * source row whose values pre-fill the form + whose id becomes
    * `duplicatedFromId` on the created homebrew). Ignored in `create`. */
@@ -123,15 +148,15 @@ function definitionToFormValues(def: ItemDefinition | undefined): FormValues {
 }
 
 /**
- * Convert form output into a payload. Two modes:
+ * Convert form output into a payload. Two helpers:
  *
- * - **create mode (`forEdit=false`)**: returns a clean `HomebrewDefinitionInput`.
+ * - **create mode**: returns a clean `HomebrewDefinitionInput`.
  *   Empty-string optionals collapse to absent keys (the spread in
  *   `createHomebrew` then doesn't set them on the row).
  *
- * - **edit mode (`forEdit=true`)**: returns a `HomebrewDefinitionPatch`
- *   where empty-string optionals become `{ key: undefined }` — the
- *   reducer's diff loop reads this as "user explicitly cleared this
+ * - **edit mode**: returns a `HomebrewDefinitionPatch` where every
+ *   editable field is present, possibly as `undefined`. The reducer's
+ *   diff loop reads `undefined` as "user explicitly cleared this
  *   optional field" and removes it from the stored row.
  */
 function formOutputToCreateInput(values: FormOutput): HomebrewDefinitionInput {
@@ -155,8 +180,6 @@ function formOutputToCreateInput(values: FormOutput): HomebrewDefinitionInput {
 }
 
 function formOutputToEditPatch(values: FormOutput): HomebrewDefinitionPatch {
-  // Every field is present (possibly as `undefined`) so the reducer's
-  // diff sees both "set to X" and "explicitly cleared" cases.
   const result: HomebrewDefinitionPatch = {
     name: values.name,
     category: values.category,
@@ -182,9 +205,10 @@ export function HomebrewForm({
   open,
   onOpenChange,
   mode,
+  variant = 'modal',
   definition,
   onCreated,
-}: HomebrewFormProps): ReactElement {
+}: HomebrewFormProps): ReactElement | null {
   const dispatch = useStore((s) => s.dispatch);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -198,14 +222,16 @@ export function HomebrewForm({
     defaultValues: definitionToFormValues(definition),
   });
 
-  // Reset on open OR when the underlying definition reference changes
-  // (e.g. CatalogBrowser opens edit on a different row).
+  // In modal variant: reset on open or when the definition reference
+  // changes (e.g. CatalogBrowser opens edit on a different row).
+  // In inline variant: open is meaningless — reset on mount + when the
+  // definition reference changes.
   useEffect(() => {
-    if (open) {
+    if (variant === 'inline' || open) {
       reset(definitionToFormValues(definition));
       setSubmitError(null);
     }
-  }, [open, definition, reset]);
+  }, [open, variant, definition, reset]);
 
   function onSubmit(values: FormOutput): void {
     try {
@@ -245,7 +271,11 @@ export function HomebrewForm({
   }
 
   const title =
-    mode === 'edit' ? 'Edit homebrew' : mode === 'duplicate' ? 'Duplicate to homebrew' : 'New homebrew item';
+    mode === 'edit'
+      ? 'Edit homebrew'
+      : mode === 'duplicate'
+        ? 'Duplicate to homebrew'
+        : 'New homebrew item';
 
   const description =
     mode === 'edit'
@@ -262,6 +292,170 @@ export function HomebrewForm({
         ? 'Duplicate'
         : 'Create';
 
+  // Shared form body — used by both variants. Keeping a single inline
+  // form body is the whole point of the refactor: one schema, one set
+  // of fields, one submit handler.
+  const formBody = (
+    <form
+      onSubmit={(e) => {
+        void handleSubmit(onSubmit)(e);
+      }}
+      className="space-y-4"
+      noValidate
+    >
+      <div className="grid grid-cols-[2fr_1fr] gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="homebrew-name">Name</Label>
+          <Input id="homebrew-name" autoFocus {...register('name')} />
+          {errors.name?.message !== undefined ? (
+            <p className="text-sm text-destructive" role="alert">
+              {errors.name.message}
+            </p>
+          ) : null}
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="homebrew-category">Category</Label>
+          <select
+            id="homebrew-category"
+            {...register('category')}
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+          >
+            {CATEGORY_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-[1fr_1fr_1fr] gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="homebrew-weight">Weight (lb)</Label>
+          <Input
+            id="homebrew-weight"
+            inputMode="decimal"
+            placeholder="optional"
+            {...register('weight')}
+          />
+          {errors.weight?.message !== undefined ? (
+            <p className="text-sm text-destructive" role="alert">
+              {errors.weight.message}
+            </p>
+          ) : null}
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="homebrew-cost-amount">Cost (amount)</Label>
+          <Input
+            id="homebrew-cost-amount"
+            inputMode="numeric"
+            placeholder="optional"
+            {...register('costAmount')}
+          />
+          {errors.costAmount?.message !== undefined ? (
+            <p className="text-sm text-destructive" role="alert">
+              {errors.costAmount.message}
+            </p>
+          ) : null}
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="homebrew-cost-currency">Currency</Label>
+          <select
+            id="homebrew-cost-currency"
+            {...register('costCurrency')}
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="cp">cp</option>
+            <option value="sp">sp</option>
+            <option value="ep">ep</option>
+            <option value="gp">gp</option>
+            <option value="pp">pp</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="homebrew-description">Description</Label>
+        <textarea
+          id="homebrew-description"
+          rows={4}
+          placeholder="optional"
+          {...register('description')}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+        />
+        {errors.description?.message !== undefined ? (
+          <p className="text-sm text-destructive" role="alert">
+            {errors.description.message}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="homebrew-tags">Tags (comma-separated)</Label>
+        <Input
+          id="homebrew-tags"
+          placeholder="e.g. light, underdark"
+          {...register('tags')}
+        />
+        {errors.tags?.message !== undefined ? (
+          <p className="text-sm text-destructive" role="alert">
+            {errors.tags.message}
+          </p>
+        ) : null}
+      </div>
+
+      {submitError !== null ? (
+        <p className="text-sm text-destructive" role="alert">
+          {submitError}
+        </p>
+      ) : null}
+
+      {/* Footer button row. In modal variant DialogFooter handles
+          layout; inline variant uses a plain flex container with the
+          same right-aligned button arrangement. */}
+      {variant === 'modal' ? (
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              onOpenChange(false);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={isSubmitting}>
+            {submitLabel}
+          </Button>
+        </DialogFooter>
+      ) : (
+        <div className="flex justify-end gap-2 pt-2">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              onOpenChange(false);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={isSubmitting}>
+            {submitLabel}
+          </Button>
+        </div>
+      )}
+    </form>
+  );
+
+  if (variant === 'inline') {
+    // Parent owns the modal shell; we render just the form body.
+    // The parent is responsible for whether/when this component
+    // is mounted at all — we don't gate on `open` here because
+    // inline embeds rely on conditional mounting from the parent
+    // (see AddItemModal's Custom tab).
+    return formBody;
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
@@ -269,136 +463,7 @@ export function HomebrewForm({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-
-        <form
-          onSubmit={(e) => {
-            void handleSubmit(onSubmit)(e);
-          }}
-          className="space-y-4"
-          noValidate
-        >
-          <div className="grid grid-cols-[2fr_1fr] gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="homebrew-name">Name</Label>
-              <Input id="homebrew-name" autoFocus {...register('name')} />
-              {errors.name?.message !== undefined ? (
-                <p className="text-sm text-destructive" role="alert">
-                  {errors.name.message}
-                </p>
-              ) : null}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="homebrew-category">Category</Label>
-              <select
-                id="homebrew-category"
-                {...register('category')}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                {CATEGORY_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-[1fr_1fr_1fr] gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="homebrew-weight">Weight (lb)</Label>
-              <Input
-                id="homebrew-weight"
-                inputMode="decimal"
-                placeholder="optional"
-                {...register('weight')}
-              />
-              {errors.weight?.message !== undefined ? (
-                <p className="text-sm text-destructive" role="alert">
-                  {errors.weight.message}
-                </p>
-              ) : null}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="homebrew-cost-amount">Cost (amount)</Label>
-              <Input
-                id="homebrew-cost-amount"
-                inputMode="numeric"
-                placeholder="optional"
-                {...register('costAmount')}
-              />
-              {errors.costAmount?.message !== undefined ? (
-                <p className="text-sm text-destructive" role="alert">
-                  {errors.costAmount.message}
-                </p>
-              ) : null}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="homebrew-cost-currency">Currency</Label>
-              <select
-                id="homebrew-cost-currency"
-                {...register('costCurrency')}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="cp">cp</option>
-                <option value="sp">sp</option>
-                <option value="ep">ep</option>
-                <option value="gp">gp</option>
-                <option value="pp">pp</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="homebrew-description">Description</Label>
-            <textarea
-              id="homebrew-description"
-              rows={4}
-              placeholder="optional"
-              {...register('description')}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            />
-            {errors.description?.message !== undefined ? (
-              <p className="text-sm text-destructive" role="alert">
-                {errors.description.message}
-              </p>
-            ) : null}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="homebrew-tags">Tags (comma-separated)</Label>
-            <Input
-              id="homebrew-tags"
-              placeholder="e.g. light, underdark"
-              {...register('tags')}
-            />
-            {errors.tags?.message !== undefined ? (
-              <p className="text-sm text-destructive" role="alert">
-                {errors.tags.message}
-              </p>
-            ) : null}
-          </div>
-
-          {submitError !== null ? (
-            <p className="text-sm text-destructive" role="alert">
-              {submitError}
-            </p>
-          ) : null}
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {submitLabel}
-            </Button>
-          </DialogFooter>
-        </form>
+        {formBody}
       </DialogContent>
     </Dialog>
   );

@@ -114,18 +114,19 @@ export function AddItemModal({
           <CatalogPicker stashId={stashId} stashLabel={stashLabel} />
         ) : (
           <div className="py-2 text-sm text-muted-foreground">
-            <p className="mb-2">
+            <p className="mb-3">
               Build a homebrew item. It joins the catalog and is added to{' '}
               <strong>{stashLabel}</strong>.
             </p>
             <HomebrewForm
               open={true}
+              variant="inline"
               onOpenChange={(formOpen) => {
-                // Cancelling the HomebrewForm should return the user to
-                // the Catalog tab — NOT close the parent AddItemModal.
-                // A successful create closes the parent via
-                // `onCreated -> handleHomebrewCreated`; cancellation is
-                // the only path through this branch.
+                // Cancelling the inline HomebrewForm returns the user
+                // to the Catalog tab — NOT close the parent
+                // AddItemModal. A successful create closes the parent
+                // via `onCreated -> handleHomebrewCreated`; cancellation
+                // is the only path through this branch.
                 if (!formOpen) setTab('catalog');
               }}
               mode="create"
