@@ -159,7 +159,8 @@ type ItemDefinition = {
   tags?: string[];
   duplicatedFromId?: string;
   createdBy?: string;              // userId for homebrew authorship
-  partyId?: string;                // null for PHB; null for solo homebrew (single party)
+  partyId?: string;                // null for PHB; set to state.party.id on every M6 homebrew
+                                   // (per OUTLINE §3.7 party-scoped visibility — forward-compat with R4).
 };
 
 type ItemInstance = {

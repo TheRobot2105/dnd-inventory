@@ -631,6 +631,42 @@ Homebrew create/edit/delete with live propagation; duplicate-to-edit for PHB.
 > - **`fixtures.bootstrapWithHomebrew()`** has overrides for `name` and `category` only because tests don't yet need to baseline weight/cost/description/tags. Widen ergonomically when an R1+ test needs those fields.
 > - **Bundle-size watchpoint:** M5.5 → 745 kB; M6 → 757 kB. Cumulative still well under 1 MB raw. The +11.30 kB delta is mostly the new modal + dialog + the small text fields; HomebrewForm's RHF schema is in the same chunk as the existing modal forms.
 
+> **2026-06-24 (later) — Custom-tab UX fixes + HomebrewForm `variant` refactor (post-plan).**
+>
+> Two user-flagged issues with the M6 first cut, fixed in-place:
+>
+> **Issue 1 — Cancel from Custom tab killed the entire AddItemModal.** The first cut wired the inner `<HomebrewForm onOpenChange>` to `onOpenChange(false)` on the **outer** modal, conflating "user cancelled the homebrew form" with "user is done adding items entirely". Cancel left the user with no way back to the Catalog.
+>
+> Fix: `AddItemModal`'s Custom-tab handler now switches `tab` back to `'catalog'` on cancel (parent stays open). Only `onCreated` — fired exclusively on successful submit — closes the parent. Added `useEffect` to reset `tab` to `'catalog'` on every fresh `open` transition so a previously-left Custom tab doesn't survive a close/reopen cycle.
+>
+> Two regression tests added in `AddItemModal.test.tsx`:
+> - Cancel from Custom tab → parent stays open, Catalog tab becomes active, CatalogPicker is back on screen.
+> - Catalog is the default tab on every fresh open (rerender from `open: false → true`).
+>
+> **Issue 2 — Custom tab rendered HomebrewForm as a nested `<Dialog>`** on top of the AddItemModal's own `<Dialog>`. The user expected the homebrew form fields to live **inside** the AddItemModal's Custom tab, not pop up as a second modal.
+>
+> Fix: refactored `HomebrewForm` to accept a `variant: 'modal' | 'inline'` prop.
+> - **`'modal'` (default)** — unchanged. Wraps the form in `<Dialog>` with its own title/description. Used by `CatalogBrowser` for Duplicate / Edit / New homebrew flows.
+> - **`'inline'`** — renders just the form body (fields + footer buttons). The parent owns the surrounding Dialog. Used by `AddItemModal`'s Custom tab.
+>
+> **Single source of truth preserved.** One Zod schema, one set of fields, one submit handler, one set of payload-coercion helpers (`formOutputToCreateInput` + `formOutputToEditPatch`). The extracted `formBody` element is rendered as-is in inline mode and inside `<DialogContent>` in modal mode. The footer button row is the only fork — `<DialogFooter>` for modal, a plain `<div class="flex justify-end gap-2">` for inline — because `DialogFooter` is meaningless outside a Dialog tree.
+>
+> Inline-mode lifecycle notes:
+> - `open` prop is ignored in inline mode (parent controls mounting via conditional render).
+> - The `useEffect` reset hook fires on mount for inline, on `open=true` for modal.
+> - `onOpenChange(false)` is still fired on Cancel + after successful submit so the parent can react (`AddItemModal` uses this to switch back to Catalog or close itself depending on which path).
+>
+> One regression test added in `AddItemModal.test.tsx`:
+> - Asserts exactly one dialog on screen when Custom is active (was two before the refactor — a nested HomebrewForm Dialog inside AddItemModal's Dialog).
+>
+> **Spec sync.** Updated `MVP.md` §6 `ItemDefinition.partyId` comment from "null for solo homebrew (single party)" to "set to `state.party.id` on every M6 homebrew" — the M6 reducer stamps `partyId` unconditionally per the pre-implementation decision (forward-compat with R4 multi-party visibility per OUTLINE §3.7).
+>
+> **Tests:** **349 passing** workspace-wide (3 shared + 5 seeds + 45 rules + 296 web) — was 346 in the M6 first cut; +3 regression tests this pass.
+>
+> **No bundle change** (same components, same dependencies; only the render shell is conditional).
+>
+> **Forward-looking principle (carry into M7+):** when a form needs to be reusable across standalone-modal and embedded-in-parent-modal contexts, prefer a `variant: 'modal' | 'inline'` prop on the shared component over duplicating the form. The split surface is small (Dialog vs no-Dialog + DialogFooter vs flex row); the form body, validation, submit handler, and toasts stay shared.
+
 ---
 
 ### M7 — Backup
@@ -1011,6 +1047,8 @@ Loot distribution wizard (per-hoard mode), hoard generator, identification flow 
 **Catalog search**
 - [ ] Catalog search wired to `search.ts` (replaces M2's simple search)
 - [ ] Filters by category, rarity, attunement-required, cost, source (§3.7)
+- [ ] Catalog source filter (PHB / DMG / homebrew / all) surfaced in `CatalogBrowser` alongside the category filter
+- [ ] Catalog source-filter test: with PHB + ≥1 homebrew loaded, selecting "homebrew" hides PHB rows; "all" restores them; combines with category filter (e.g. "homebrew" + "consumable" only).
 
 #### R6 — Notes
 
