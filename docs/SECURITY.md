@@ -25,7 +25,7 @@ Per §9: authorization code flow with PKCE, scope `identify`, session cookies af
 | **CSRF on the OAuth callback** | Without a `state` parameter, an attacker could trick a logged-in user into linking the attacker's Discord identity. |
 | **`access_token` exposure in URLs / logs / browser history** | Tokens in query strings leak through referrers, access logs, and history. |
 | **Over-broad scope** | Requesting more than `identify` (e.g., `guilds`, `email`) collects data the app doesn't need. |
-| **Discord outage** (§11 open question) | If Discord is unreachable, all logins fail. |
+| **Discord outage** | If Discord is unreachable, all logins fail. |
 
 **Mitigations:**
 - PKCE on every OAuth flow (S256 code challenge) — required by §9.
@@ -33,8 +33,8 @@ Per §9: authorization code flow with PKCE, scope `identify`, session cookies af
 - Code exchange happens **server-side only**. The browser never sees the `access_token` or `refresh_token`.
 - Discord tokens are not persisted in the DB — only `discordId`, `displayName`, `avatarUrl` per §4 `User`.
 - Session cookies: `HttpOnly`, `Secure`, `SameSite=Lax`, signed with a server-only key.
-- Sliding session expiry (e.g., 7 days idle). On expiry, re-auth with Discord.
-- **Outage policy (proposal for §11):** existing valid session cookies remain accepted without contacting Discord; only new logins fail during an outage. Document this in admin settings.
+- Sliding session expiry: **30 days idle** with refresh-on-activity. Tuned for private campaigns that often go 2–4 weeks between sessions; 7-day expiry would force re-auth every campaign night. On expiry, re-auth with Discord.
+- **Outage policy:** existing valid session cookies remain accepted without contacting Discord; only new logins fail during an outage. Document this in admin settings.
 
 ### 1.2 Invite Codes
 
@@ -194,7 +194,7 @@ Per §3.7: party-of-one — any user can create homebrew; 2+ members — DM only
 - If markdown is ever added: sanitize with a strict allowlist library (e.g., DOMPurify) before render; never trust the stored value.
 - Self-hosted mode uses Prisma per TECH_STACK.md — all queries are parameterized; no string concatenation into SQL.
 - Local mode uses Dexie/IndexedDB, which has no string query language (lookups are by key/index), so SQL-style injection is structurally impossible there.
-- A baseline Content Security Policy is applied on self-hosted: `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'` (Tailwind needs inline styles for some transitions; revisit if removable). Blocks inline scripts even if a stored-XSS bug slipped past React.
+- A baseline Content Security Policy is applied on self-hosted: `default-src 'self'; script-src 'self'; style-src 'self'`. No `'unsafe-inline'` — Tailwind's output is a single bundled stylesheet of utility classes with no inline `<style>` blocks. Blocks inline scripts even if a stored-XSS bug slipped past React.
 
 ---
 
@@ -261,8 +261,8 @@ Per §9: WebSocket carries live party-sync events; clients receive updates withi
 
 **Mitigations:**
 - Snapshots written to a directory outside the web root, mode `0600`, owned by the server process user.
-- Each snapshot file has a SHA-256 checksum stored alongside (and optionally signed with the server signing key). Restore verifies the checksum before loading.
-- Default retention: 30 days (§11 open question); operator-configurable in admin settings.
+- Each snapshot file has a SHA-256 checksum stored alongside (plain checksum, not signed — the private-use threat model doesn't include an attacker substituting snapshot files; the checksum is for detecting accidental corruption). Restore verifies the checksum before loading.
+- Default retention: 30 days; operator-configurable in admin settings.
 - All secrets loaded from environment variables; `.env` is in `.gitignore`, `.env.example` documents the variables.
 - Session signing key is a 256-bit random value generated at install time; rotating it invalidates all existing sessions.
 - `pnpm audit` runs in CI; high/critical findings block release.
