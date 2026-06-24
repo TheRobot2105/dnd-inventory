@@ -13,6 +13,9 @@
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests"
   },
+  "dependencies": {
+    "@app/shared": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "eslint": "^9.18.0",

@@ -146,6 +146,34 @@ const transferEntry = z.object({
 });
 
 /**
+ * `split` — break a stack into two rows that stay in the same stash. M5
+ * adds this as a first-class user-initiated action (the alternative was a
+ * `transfer` sub-mode; the 1:1 action ↔ log-type pattern won out per the
+ * M5 plan).
+ *
+ * Validation lives in the reducer + `packages/rules/inventory.ts`:
+ * `1 \u2264 quantity < source.quantity`. Both ids appear on the payload so
+ * the per-item history view surfaces the entry on BOTH the source row's
+ * filter and the new row's filter.
+ *
+ * `notes` and `customName` carry over from source to new row (M5 plan
+ * decision); the auto-stack key `(definitionId, notes ?? "")` therefore
+ * still collapses the two rows on a later `acquire` against the same
+ * stash + key — which is fine, that's the whole point of splitting
+ * (the user splits in order to *change* one of those fields).
+ */
+const splitEntry = z.object({
+  ...baseLogFields,
+  type: z.literal('split'),
+  payload: z.object({
+    sourceInstanceId: z.string().min(1),
+    newInstanceId: z.string().min(1),
+    quantity: z.number().int().positive(),
+    stashId: z.string().min(1),
+  }),
+});
+
+/**
  * `create-stash` — a new stash row + its `CurrencyHolding` are added to
  * state. M3 only dispatches the `scope: 'character'` variant (Storage
  * stashes — non-carried, character-owned). The schema enum keeps the
@@ -266,6 +294,7 @@ export const transactionLogEntrySchema = z.discriminatedUnion('type', [
   seedCatalogEntry,
   editItemInstanceEntry,
   transferEntry,
+  splitEntry,
   createStashEntry,
   renameStashEntry,
   deleteStashEntry,

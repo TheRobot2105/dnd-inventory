@@ -129,6 +129,30 @@ export type Action =
         delta: { cp: number; sp: number; ep: number; gp: number; pp: number };
         reason: 'deposit' | 'withdraw' | 'convert';
       };
+    }
+  | {
+      // M5: move an item (or part of one) from its current stash to
+      // another. Auto-stacks onto matching `(definitionId, notes ?? "")`
+      // rows on arrival. Same-stash transfers, over-quantity transfers,
+      // and unknown stash / item ids are reducer-rejected.
+      type: 'transfer';
+      payload: {
+        itemInstanceId: string;
+        toStashId: string;
+        quantity: number;
+      };
+    }
+  | {
+      // M5: break one stack into two rows in the same stash. The new row
+      // inherits `notes` and `customName` from the source so it can
+      // immediately be edited via Item Detail (M2.5). Strict validation:
+      // `1 \u2264 quantity < source.quantity` — a "split" that empties
+      // the source is a transfer, not a split.
+      type: 'split';
+      payload: {
+        itemInstanceId: string;
+        quantity: number;
+      };
     };
 
 export type TransactionLogEntry = LogEntry;

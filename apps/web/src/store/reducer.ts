@@ -5,7 +5,7 @@ import type {
   Stash,
   TransactionLogEntry,
 } from '@app/shared';
-import { currency } from '@app/rules';
+import { currency, inventory } from '@app/rules';
 
 import type { Action, AppState } from './types';
 
@@ -79,6 +79,10 @@ export function reduce(state: AppState, action: Action): ReducerResult {
       return deleteStash(state, action.payload);
     case 'currency-change':
       return currencyChange(state, action.payload);
+    case 'transfer':
+      return transfer(state, action.payload);
+    case 'split':
+      return split(state, action.payload);
   }
 }
 
@@ -859,6 +863,185 @@ function currencyChange(
       {
         type: 'currency-change',
         payload: { stashId: payload.stashId, delta, reason: payload.reason },
+      },
+    ],
+  };
+}
+
+// -------------------------------------------------------------------- //
+// transfer (M5)
+// -------------------------------------------------------------------- //
+
+/**
+ * Move `quantity` units of `itemInstanceId` from its current stash to
+ * `toStashId`. M5 promotes `transfer` from M3's internal delete-cascade
+ * emitter to a first-class user-initiated action.
+ *
+ * Behavior (per the M5 plan, user-decided):
+ *   1. Same-stash transfers are rejected (no-op; UI also guards).
+ *   2. Quantity is validated via `inventory.validateTransfer`
+ *      (`1 \u2264 qty \u2264 source.quantity`).
+ *   3. Auto-stack on arrival per `(definitionId, notes ?? "")` —
+ *      matches `acquire`. When the destination already has a matching
+ *      row, the surviving row is the destination's; the source row's
+ *      id is destroyed on full-move auto-stack (Item Detail
+ *      `<Navigate to="/" replace />`s on unknown ids — documented as
+ *      expected in the M5 plan).
+ *   4. When no auto-stack target exists:
+ *      - Full move (qty === source.quantity): re-point source.ownerId,
+ *        id preserved.
+ *      - Partial move (qty < source.quantity): decrement source, create
+ *        a fresh row in destination with the moved qty.
+ *
+ * Emits one `transfer` log entry whose `itemInstanceId` is the surviving
+ * destination row id so the per-item history filter resolves cleanly.
+ */
+function transfer(
+  state: AppState,
+  payload: Extract<Action, { type: 'transfer' }>['payload'],
+): ReducerResult {
+  const s = requireState(state, 'transfer');
+
+  const source = s.items.find((i) => i.id === payload.itemInstanceId);
+  if (source === undefined) {
+    throw new Error(`transfer: unknown itemInstanceId ${payload.itemInstanceId}`);
+  }
+  const toStash = s.stashes.find((st) => st.id === payload.toStashId);
+  if (toStash === undefined) {
+    throw new Error(`transfer: unknown toStashId ${payload.toStashId}`);
+  }
+  if (source.ownerId === payload.toStashId) {
+    throw new Error('transfer: same stash (no-op)');
+  }
+  inventory.validateTransfer(source, payload.quantity);
+
+  const fromStashId = source.ownerId;
+  const isFullMove = payload.quantity === source.quantity;
+  const target = inventory.findAutoStackTarget(
+    s.items,
+    payload.toStashId,
+    source.definitionId,
+    source.notes,
+  );
+
+  let nextItems: ItemInstance[];
+  let survivingId: string;
+
+  if (target !== undefined) {
+    // Auto-stack onto target. Target row absorbs the moved quantity;
+    // source row either disappears (full move) or stays decremented.
+    survivingId = target.id;
+    if (isFullMove) {
+      nextItems = s.items
+        .filter((i) => i.id !== source.id)
+        .map((i) =>
+          i.id === target.id ? { ...i, quantity: i.quantity + payload.quantity } : i,
+        );
+    } else {
+      nextItems = s.items.map((i) => {
+        if (i.id === source.id) return { ...i, quantity: i.quantity - payload.quantity };
+        if (i.id === target.id) return { ...i, quantity: i.quantity + payload.quantity };
+        return i;
+      });
+    }
+  } else if (isFullMove) {
+    // Re-point source to the new stash; id preserved.
+    survivingId = source.id;
+    nextItems = s.items.map((i) =>
+      i.id === source.id ? { ...i, ownerId: payload.toStashId } : i,
+    );
+  } else {
+    // Partial move with no auto-stack target: clone source into a fresh
+    // row in the destination, decrement source.
+    const newId = crypto.randomUUID();
+    survivingId = newId;
+    const newRow: ItemInstance = {
+      ...source,
+      id: newId,
+      ownerId: payload.toStashId,
+      quantity: payload.quantity,
+    };
+    nextItems = [
+      ...s.items.map((i) =>
+        i.id === source.id ? { ...i, quantity: i.quantity - payload.quantity } : i,
+      ),
+      newRow,
+    ];
+  }
+
+  return {
+    state: { ...s, items: nextItems },
+    logEntries: [
+      {
+        type: 'transfer',
+        payload: {
+          itemInstanceId: survivingId,
+          quantity: payload.quantity,
+          fromStashId,
+          toStashId: payload.toStashId,
+        },
+      },
+    ],
+  };
+}
+
+// -------------------------------------------------------------------- //
+// split (M5)
+// -------------------------------------------------------------------- //
+
+/**
+ * Break one stack into two rows in the same stash. The new row inherits
+ * `notes` and `customName` so the user can edit them via Item Detail
+ * (M2.5) afterwards — splitting is the way to detach a "different"
+ * sub-stack from a homogeneous row.
+ *
+ * Strict bounds (per `inventory.validateSplit`):
+ *   - `1 \u2264 quantity < source.quantity`
+ *   - A split that empties the source is a transfer, not a split.
+ *   - A singleton row (quantity 1) cannot be split.
+ *
+ * Emits one `split` log entry carrying both `sourceInstanceId` and
+ * `newInstanceId` so the per-item history filter surfaces the entry
+ * on BOTH rows' Item Detail screens.
+ */
+function split(
+  state: AppState,
+  payload: Extract<Action, { type: 'split' }>['payload'],
+): ReducerResult {
+  const s = requireState(state, 'split');
+
+  const source = s.items.find((i) => i.id === payload.itemInstanceId);
+  if (source === undefined) {
+    throw new Error(`split: unknown itemInstanceId ${payload.itemInstanceId}`);
+  }
+  inventory.validateSplit(source, payload.quantity);
+
+  const newId = crypto.randomUUID();
+  // Spread source to inherit notes / customName / conditionOverrides;
+  // overwrite id + quantity.
+  const newRow: ItemInstance = {
+    ...source,
+    id: newId,
+    quantity: payload.quantity,
+  };
+  const nextItems: ItemInstance[] = [
+    ...s.items.map((i) =>
+      i.id === source.id ? { ...i, quantity: i.quantity - payload.quantity } : i,
+    ),
+    newRow,
+  ];
+
+  return {
+    state: { ...s, items: nextItems },
+    logEntries: [
+      {
+        type: 'split',
+        payload: {
+          sourceInstanceId: source.id,
+          newInstanceId: newId,
+          quantity: payload.quantity,
+          stashId: source.ownerId,
+        },
       },
     ],
   };

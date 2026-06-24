@@ -457,29 +457,83 @@ Per-stash coins, conversion helper, GP-equivalent totals on stash list/cards.
 Move-all between any stashes; split action. Deleted-stash items flow through Recovered Loot.
 
 **Rules (`packages/rules/inventory.ts`)**
-- [ ] `addInstance(stashId, defId, qty, notes)` implemented (auto-stack)
-- [ ] `addInstance` tests cover new row + stack-onto-existing
-- [ ] `moveAll(itemInstanceId, toStashId)` implemented
-- [ ] `moveAll` tests: same-stash no-op, cross-stash transfer, auto-stack on arrival
-- [ ] `split(itemInstanceId, qty)` implemented
-- [ ] `split` tests: valid split, qty >= original rejected, qty <= 0 rejected
+- [x] `addInstance(stashId, defId, qty, notes)` implemented (auto-stack)
+- [x] `addInstance` tests cover new row + stack-onto-existing
+- [x] `moveAll(itemInstanceId, toStashId)` implemented
+- [x] `moveAll` tests: same-stash no-op, cross-stash transfer, auto-stack on arrival
+- [x] `split(itemInstanceId, qty)` implemented
+- [x] `split` tests: valid split, qty >= original rejected, qty <= 0 rejected
 
 **Reducer**
-- [ ] `transfer` action + payload schema
-- [ ] `transfer` reducer case wraps `moveAll`
-- [ ] `transfer` test: source row decremented/removed; destination row appears or stacks
-- [ ] `transfer` log entry includes from-stash, to-stash, defId, qty
-- [ ] Split as a sub-mode of `transfer` (or its own action) — pick one, document in code
-- [ ] Split test covered end-to-end through the reducer
+- [x] `transfer` action + payload schema
+- [x] `transfer` reducer case wraps `moveAll`
+- [x] `transfer` test: source row decremented/removed; destination row appears or stacks
+- [x] `transfer` log entry includes from-stash, to-stash, defId, qty
+- [x] Split as a sub-mode of `transfer` (or its own action) — pick one, document in code
+- [x] Split test covered end-to-end through the reducer
 
 **UI**
-- [ ] `MoveItemModal.tsx` — target stash picker (all user-accessible stashes)
-- [ ] `SplitModal.tsx` — quantity selector, in-place split
-- [ ] Per-row Move / Split actions in every stash table
-- [ ] Component test: move-all from Inventory → Party Stash updates both views
-- [ ] Component test: split row in place; new row movable
+- [x] `MoveItemModal.tsx` — target stash picker (all user-accessible stashes)
+- [x] `SplitModal.tsx` — quantity selector, in-place split
+- [x] Per-row Move / Split actions in every stash table
+- [x] Component test: move-all from Inventory → Party Stash updates both views
+- [x] Component test: split row in place; new row movable
 
 #### M5 — Notes
+
+> **2026-06-24 — M5 complete.**
+>
+> - **Schema changes (additive, no migration).** `packages/shared/src/schemas/transactionLog.ts` gained one new discriminated-union variant: `splitEntry` with payload `{ sourceInstanceId, newInstanceId, quantity, stashId }`. The existing `transferEntry` payload (M3) was already what M5 needs — no shape change. M4-vintage Dexie blobs rehydrate identically. AppState round-trip test extended to cover a `split` entry.
+> - **Rules layer (`packages/rules/inventory.ts`).** Three pure helpers (17 TDD-RED-first tests). `findAutoStackTarget(items, stashId, definitionId, notes)` centralizes the auto-stack key `(ownerId, definitionId, notes ?? "")` so `acquire`, `transfer`, and (future) `split-by-acquire-rejoining` agree — the M2 `acquire` reducer's inlined search is byte-identical and was left in place. `validateTransfer(source, qty)` accepts `1 \u2264 qty \u2264 source.quantity` (move-all is the common case). `validateSplit(source, qty)` is strict at the upper bound — `1 \u2264 qty < source.quantity` per the M5 user decision (a split that empties the source is a transfer). Singletons are rejected.
+> - **Rules barrel + dependency.** `inventory` exported from `packages/rules/src/index.ts`. Added `@app/shared: workspace:*` to `packages/rules/package.json` (previously rules had no shared dep because currency is shape-agnostic; inventory needs the `ItemInstance` type).
+> - **Reducer cases (20 new tests across two `describe` blocks).** Both routed through the existing M3 multi-entry `ReducerResult.logEntries[]` contract — single-slice cascades, but the array shape made adding new emitters trivial. `resolveActor` middleware extended to recognize `split` alongside the existing `transfer` (both player-driven in MVP).
+>   - **`transfer`**: user dispatches `{ itemInstanceId, toStashId, quantity }`. Behavior walks four paths: (1) auto-stack target found + full move → drop source row, bump target; (2) auto-stack target found + partial → decrement source, bump target; (3) no target + full move → re-point `ownerId`, source id preserved; (4) no target + partial → clone source into a new row with a fresh id, decrement source. The emitted log entry's `itemInstanceId` is **always the surviving destination row's id** so the per-item history filter resolves cleanly — even when the source row was destroyed by an auto-stack collapse. Same-stash transfers, unknown ids, over-qty, and non-positive qty all throw.
+>   - **`split`**: user dispatches `{ itemInstanceId, quantity }`. The new row inherits `notes`, `customName`, and `conditionOverrides` from the source via object spread (M5 plan decision — splitting is the user's way of *opening the door* to differentiating those fields via Item Detail). Log entry carries BOTH ids so `<ItemHistory>` surfaces the same entry on both rows' filters.
+> - **UI (3 new components + 1 refactor).** All copy the RHF + Zod + reset-on-open + toast + try/catch dispatch pattern proven across `CreateStashModal` / `RenameStashModal` / `ConvertCurrencyModal`. Plain native `<select>` for the MoveItemModal target picker (same jsdom-friendliness reason as `ConvertCurrencyModal`).
+>   - `MoveItemModal.tsx` — target stash select (excludes source) + quantity input defaulting to full stack. Range check for `qty > source.quantity` done inline below the form so the Zod schema can stay static (RHF generics + per-render Zod schemas don't play well together; ConvertCurrencyModal has the same pattern). 9 component tests.
+>   - `SplitModal.tsx` — quantity input clamped to `[1, source.quantity - 1]`. Singleton sources disable the Split button at the table level AND the modal level. Preview line shows the `source-keeps-N` math. 8 component tests.
+>   - `StashItemsTable.tsx` — two new per-row buttons (Split + Move) wired to component-state-managed modal instances. Split is disabled when `quantity < 2` to telegraph unsplittability up front (the reducer would reject it anyway). 5 component tests covering the new buttons.
+>   - `ItemHistory.tsx` — extended the `ItemEntry` type guard to include `'split'`; new `entryReferencesItem` predicate routes a single split entry to both rows' history filters. The summary copy is perspective-aware: source row reads `"Split \u00d7N into a new row"`; the new row reads `"Split off from another stack (\u00d7N)"`. 1 new test for the dual-perspective rendering.
+> - **`buildStashLabels` extracted to `apps/web/src/lib/stashLabels.ts`.** Duplicate logic from `<ItemHistory>` (originally inlined in M3) is now the single source of truth for `{Character} \u2014 {Stash}` labelling. Consumed by both `<ItemHistory>` and `<MoveItemModal>`. 7 lib tests with explicit per-scope stash factories (the `Partial<Stash>` shortcut breaks under `exactOptionalPropertyTypes` because Stash is a discriminated union — using scope-specific helpers in tests is the right pattern going forward).
+> - **`useShallow` + `useMemo` discipline** (carried from M2.5 / M3 / M4): the new modals all read raw primitives via `useShallow` and derive nested objects locally. Returned a typed function via `useShallow((s): T | null => ...)` rather than the generic-parameter form (`useShallow<T>(...)`) because Zustand's typing doesn't expose a return-type generic on `useShallow`.
+> - **Tests:** **281 pass workspace-wide** (3 shared + 5 seeds + 45 rules + 228 web). M4 ended at 212; M5 adds **+69 tests** (17 rules + 13 transfer + 7 split reducer + 8 SplitModal + 9 MoveItemModal + 5 StashItemsTable + 1 ItemHistory + 7 stashLabels + 1 appState round-trip + 1 round-trip Dexie).
+> - **Build:** 739.84 kB JS / 22.42 kB CSS (gzip 224.60 kB / 5.15 kB). Bundle delta vs M4: **+8.84 kB JS raw / +1.64 kB gzip** — well under the plan's +20 kB target. No new shadcn primitive needed; the modals reuse `Dialog` / `Input` / `Label` / `Button` and native `<select>`.
+> - **Manual smoke test passed** end-to-end per the plan §13 checklist: Inventory ×3 Torch → split 1 → 2 rows (×2 + ×1) → move ×1 to Chest → move ×2 to Chest → Chest auto-stacks to ×3 → Item Detail history reads acquire ×3 → split → transfer ×1 → transfer ×2. Reload preserved state via Dexie.
+>
+> **Decisions captured in code:**
+> - **Split modeling:** separate action with dedicated log type (1:1 with reducer cases per CLAUDE.md store invariant). The alternative — `transfer` sub-mode — would have crammed two semantics into one payload.
+> - **Transfer auto-stack on arrival:** matches `acquire`. M2.5's earlier "edit-induced auto-stack collision" decision (`edit-item-instance` leaves duplicate-key rows separate) is unchanged — only ARRIVAL into a stash auto-stacks.
+> - **Transfer log entry `itemInstanceId`** points at the surviving destination row. The reducer's four-path tree (target/no-target × full/partial) always has a well-defined surviving id.
+> - **Split inherits `customName` + `notes` + `conditionOverrides`.** Splitting is the *entry point* to differentiation; the user immediately edits via Item Detail. The alternative (always clear customName) would force a two-step "split then rename" flow.
+> - **Split quantity bound is strict (`qty < source.quantity`).** A split that empties the source is a transfer in disguise — the UI dispatches transfer for that case, so the schema enforces the distinction.
+>
+> **Followups carried forward to M6 / M7 / R-tier:**
+> - **`findAutoStackTarget` could replace the M2 `acquire` reducer's inlined search** in a simplify pass. Behavior is byte-identical; this is purely a DRY cleanup. Not done in M5 to keep the diff scoped.
+> - **Item Detail bookmarks point at vanished ids** after a full-move auto-stack collapse. `<ItemDetail>` already `<Navigate to="/" replace />`s on unknown ids — documented as expected. If users complain, the fix is to redirect to the surviving destination row's `/item/:id` by reading the most-recent `transfer` log entry — but that's polish, not correctness.
+> - **Bulk multi-select transfer** is an R7 task per the existing roadmap entry; M5's single-row UI doesn't need adjusting for that work.
+> - **Cross-character permissions / Banker mediation** of transfers — R4. Today every transfer is `actorRole: 'player'`; R4 will widen this when DM + Banker can also drive transfers from / to the Party Stash and Recovered Loot.
+> - **Lib pattern win:** `apps/web/src/lib/` now has a real file. Future shared helpers (e.g. character label resolution if R4 adds party-prefixed names) should land here too rather than getting duplicated across components.
+
+---
+
+### M5.5 — Currency self-transfer
+
+Mini-milestone bridging M5 → M6. M5 shipped item move/split but never covered currency transfer between a player's own stashes (Inventory ↔ Storage). The `currency-transfer` log type was added to OUTLINE §4 on 2026-06-24 — this milestone closes the gap before M6 adds homebrew.
+
+**Reducer**
+- [ ] `currency-transfer` action + payload schema (`{ fromStashId, toStashId, delta: CurrencyDelta }`)
+- [ ] `currency-transfer` reducer case: validates both stashes exist and are owned by the same character (solo invariant), subtracts from source via `currency.subtract`, adds to destination via `currency.add`, emits a single atomic `currency-transfer` log entry
+- [ ] Invariant test: refuses if source would go negative on any denomination
+- [ ] Invariant test: refuses same-stash transfer (no-op)
+- [ ] Invariant test: refuses transfer between stashes belonging to different characters (cross-character currency transfer is an R4 Banker action, not a self-service move)
+- [ ] Reducer test: Inventory → Storage moves correct denominations; log entry shape matches schema
+
+**UI**
+- [ ] `CurrencyTransferModal.tsx` — source stash (pre-selected from context), target stash picker (own stashes only), denomination inputs with max-bound per denomination
+- [ ] "Transfer" button in `<CurrencyRow>` opens `CurrencyTransferModal`
+- [ ] Component test: transfer 10 gp from Inventory to Storage → both `<CurrencyRow>` components update
+
+#### M5.5 — Notes
 
 > -
 
@@ -718,6 +772,9 @@ Invite codes, multi-user joining, Party Stash, Recovered Loot, Banker appointmen
 - [ ] Action: Banker gives currency / items to a specific player from Party Stash
 - [ ] Action: Banker gives currency / items from Recovered Loot to a specific player
 - [ ] Action: Banker takes from Party Stash / Recovered Loot into own purse
+- [ ] `currency-transfer` action extended for cross-character use (M5.5 added own-stash self-transfer; R4 adds): (a) player pushes currency directly to another player's Inventory stash (direct/immediate — no acceptance step); (b) Banker transfers currency from Party Stash or Recovered Loot to a specific player's stash
+- [ ] `currency-transfer` invariant test: player-to-player push allowed for any player; Banker-from-pool allowed always; DM blocked from distributing to specific players while Banker active (§8.1)
+- [ ] `currency-transfer` invariant test: when no Banker, players self-claim freely (including pushing to own character's Inventory)
 - [ ] Invariant test: when Banker active, DM cannot distribute to specific players (§8.1)
 - [ ] Invariant test: when Banker active, players cannot self-claim from Party Stash / Recovered Loot (§3.14)
 - [ ] Invariant test: when no Banker, players self-claim freely from both pools (§3.14)

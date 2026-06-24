@@ -286,6 +286,7 @@ No HP, spells, AC, proficiencies in v1.
   - `use-charge` → `{ itemInstanceId, amount }`
   - `edit-item-instance` → `{ itemInstanceId, changedFields: ("customName" | "notes" | "identified" | "equipped" | "attuned" | "currentCharges" | "conditionOverrides")[] }` — generic per-instance editor for fields that don't have a dedicated TxType. The full new value lives on the instance itself; only the changed field names are logged (mirrors `edit-homebrew`).
   - `currency-change` → `{ stashId, delta: CurrencyDelta, reason?: "deposit" | "withdraw" | "split-evenly" | "gameplay-drain" | "convert" | "stash-deleted" }` — `"stash-deleted"` is emitted by the `delete-stash` cascade when the deleted stash held non-zero currency (the delta rolls into Recovered Loot's `CurrencyHolding`). Added in M3.
+  - `currency-transfer` → `{ fromStashId, toStashId, delta: CurrencyDelta }` — atomic paired debit/credit logged as a single entry. Used for: (a) a player moving currency between their own stashes (Inventory ↔ Storage, M0+); (b) a player pushing currency directly to another player's Inventory stash (M4+, direct/immediate — no acceptance step); (c) Banker distributing currency from Party Stash or Recovered Loot to a specific player's stash. Replaces two separate `currency-change` entries in all stash-to-stash transfer scenarios.
   - `join-party` / `leave-party` → `{ partyId, characterId? }`
   - `dm-transfer` → `{ fromUserId, toUserId }`
   - `kick-player` → `{ kickedUserId }`
@@ -324,7 +325,7 @@ No HP, spells, AC, proficiencies in v1.
 4. **Item Detail** — full description, charges, **per-item history** (defaults to the ownership-transition filter; "Show all events" toggle expands to the full log per §3.11).
 5. **Party Stash** — shared list; deposit/take actions. When viewed by the **Banker**, shows additional "Distribute" controls (split-evenly, give-to-player, give-items-to-player). When viewed by the **DM with Banker active**, distribute-to-player controls are hidden; "add/remove for gameplay" controls remain.
 6. **Recovered Loot** — visible to all party members; same Banker/DM control split as Party Stash.
-7. **Transfer Modal** — pick item(s), quantity, source stash, target stash.
+7. **Transfer Modal** — pick item(s) or currency (denomination + amount), source stash, target stash. Currency transfers use `currency-transfer` (atomic); item transfers use `transfer`.
 8. **History/Log** — filterable timeline (session/character/item/type/actorRole).
 
 ### DM-facing (additional)
@@ -404,6 +405,8 @@ Pure / deterministic / unit-testable:
 | Edit any character max attunement | ❌ | ❌ | ❌ | ✅ |
 | Edit any character encumbrance rule | ❌ | ❌ | ❌ | ✅ |
 | Transfer item to another player directly (own → other) | ✅ | (receiver — auto-accepts) | ✅ | ✅ |
+| **Transfer currency between own stashes (Inventory ↔ Storage)** | ✅ (M0+) | — | ✅ | ✅ |
+| **Transfer currency directly to another player's Inventory stash** | ✅ (M4+, direct/immediate) | (receiver — auto-accepts) | ✅ | ✅ |
 | View Party Stash & Recovered Loot | ✅ | ✅ | ✅ | ✅ |
 | **Claim items/currency from Party Stash** | ✅ (only when no Banker active) | ✅ (only when no Banker active) | ✅ (always) | ✅ (only when no Banker active) |
 | **Claim items/currency from Recovered Loot** | ✅ (only when no Banker active) | ✅ (only when no Banker active) | ✅ (always) | ✅ (only when no Banker active) |

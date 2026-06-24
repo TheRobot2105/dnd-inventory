@@ -6,8 +6,8 @@
  * accidental calls fail loudly. Implementations land per the post-MVP release
  * milestones tracked in docs/roadmap.md.
  *
- * currency.ts (MVP §8) ships its real implementation in MVP M4. inventory.ts
- * lands with M5 and is intentionally NOT exported yet.
+ * currency.ts (MVP §8) ships its real implementation in MVP M4.
+ * inventory.ts (MVP §8) ships in MVP M5.
  */
 
 export * as capacity from './capacity';
@@ -19,3 +19,4 @@ export * as validation from './validation';
 export * as pricing from './pricing';
 export * as search from './search';
 export * as currency from './currency';
+export * as inventory from './inventory';

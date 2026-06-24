@@ -1599,3 +1599,485 @@ describe('reducer: currency-change (M4)', () => {
   });
 });
 
+describe('reducer: transfer (M5)', () => {
+  /**
+   * M5 promotes `transfer` from M3's internal delete-cascade emitter to a
+   * first-class user-initiated action. The action payload is the user's
+   * intent (`itemInstanceId, toStashId, quantity`); the reducer resolves
+   * the surviving destination row id and emits one `transfer` log entry.
+   *
+   * Auto-stack on arrival per the (definitionId, notes ?? "") key, mirroring
+   * `acquire` (M2). Same-stash transfers and over-qty transfers throw.
+   */
+
+  function bootstrapTransfer(): {
+    characterId: string;
+    inventoryStashId: string;
+    partyStashId: string;
+    recoveredLootStashId: string;
+    storageStashId: string;
+    catalog: ReturnType<typeof localBootstrap>['catalog'];
+  } {
+    const base = localBootstrap();
+    useStore.getState().dispatch({
+      type: 'create-stash',
+      payload: { ownerCharacterId: base.characterId, name: 'Chest at home' },
+    });
+    const storageStashId = useStore.getState().appState!.stashes.at(-1)!.id;
+    return { ...base, storageStashId };
+  }
+
+  it('moves the whole stack to an empty destination (no auto-stack target)', () => {
+    const { inventoryStashId, storageStashId, catalog } = bootstrapTransfer();
+    const torch = catalog.find((d) => d.id === 'phb-2024:torch')!;
+    useStore.getState().dispatch({
+      type: 'acquire',
+      payload: { stashId: inventoryStashId, definitionId: torch.id, quantity: 3, source: 'catalog-add' },
+    });
+    const sourceId = useStore.getState().appState!.items[0]!.id;
+
+    useStore.getState().dispatch({
+      type: 'transfer',
+      payload: { itemInstanceId: sourceId, toStashId: storageStashId, quantity: 3 },
+    });
+
+    const items = useStore.getState().appState!.items;
+    expect(items).toHaveLength(1);
+    expect(items[0]!.ownerId).toBe(storageStashId);
+    expect(items[0]!.quantity).toBe(3);
+    expect(items[0]!.id).toBe(sourceId); // id preserved when destination was empty
+  });
+
+  it('partial transfer: source decremented, new row in destination, both rows exist', () => {
+    const { inventoryStashId, storageStashId, catalog } = bootstrapTransfer();
+    const torch = catalog.find((d) => d.id === 'phb-2024:torch')!;
+    useStore.getState().dispatch({
+      type: 'acquire',
+      payload: { stashId: inventoryStashId, definitionId: torch.id, quantity: 5, source: 'catalog-add' },
+    });
+    const sourceId = useStore.getState().appState!.items[0]!.id;
+
+    useStore.getState().dispatch({
+      type: 'transfer',
+      payload: { itemInstanceId: sourceId, toStashId: storageStashId, quantity: 2 },
+    });
+
+    const items = useStore.getState().appState!.items;
+    expect(items).toHaveLength(2);
+    const source = items.find((i) => i.id === sourceId)!;
+    const dest = items.find((i) => i.id !== sourceId && i.ownerId === storageStashId)!;
+    expect(source.quantity).toBe(3);
+    expect(source.ownerId).toBe(inventoryStashId);
+    expect(dest.quantity).toBe(2);
+    expect(dest.definitionId).toBe(torch.id);
+  });
+
+  it('auto-stacks onto an existing matching row in the destination (full move)', () => {
+    const { inventoryStashId, storageStashId, catalog } = bootstrapTransfer();
+    const torch = catalog.find((d) => d.id === 'phb-2024:torch')!;
+    // Seed destination with 1 torch (auto-stack target).
+    useStore.getState().dispatch({
+      type: 'acquire',
+      payload: { stashId: storageStashId, definitionId: torch.id, quantity: 1, source: 'catalog-add' },
+    });
+    const destId = useStore.getState().appState!.items[0]!.id;
+    // Seed inventory with 3 torches.
+    useStore.getState().dispatch({
+      type: 'acquire',
+      payload: { stashId: inventoryStashId, definitionId: torch.id, quantity: 3, source: 'catalog-add' },
+    });
+    const sourceId = useStore.getState().appState!.items.find((i) => i.ownerId === inventoryStashId)!.id;
+
+    useStore.getState().dispatch({
+      type: 'transfer',
+      payload: { itemInstanceId: sourceId, toStashId: storageStashId, quantity: 3 },
+    });
+
+    const items = useStore.getState().appState!.items;
+    expect(items).toHaveLength(1); // source row removed, destination absorbed
+    expect(items[0]!.id).toBe(destId); // destination's id survives
+    expect(items[0]!.ownerId).toBe(storageStashId);
+    expect(items[0]!.quantity).toBe(4); // 1 + 3
+  });
+
+  it('auto-stacks onto matching destination (partial move)', () => {
+    const { inventoryStashId, storageStashId, catalog } = bootstrapTransfer();
+    const torch = catalog.find((d) => d.id === 'phb-2024:torch')!;
+    useStore.getState().dispatch({
+      type: 'acquire',
+      payload: { stashId: storageStashId, definitionId: torch.id, quantity: 1, source: 'catalog-add' },
+    });
+    const destId = useStore.getState().appState!.items[0]!.id;
+    useStore.getState().dispatch({
+      type: 'acquire',
+      payload: { stashId: inventoryStashId, definitionId: torch.id, quantity: 5, source: 'catalog-add' },
+    });
+    const sourceId = useStore.getState().appState!.items.find((i) => i.ownerId === inventoryStashId)!.id;
+
+    useStore.getState().dispatch({
+      type: 'transfer',
+      payload: { itemInstanceId: sourceId, toStashId: storageStashId, quantity: 2 },
+    });
+
+    const items = useStore.getState().appState!.items;
+    expect(items).toHaveLength(2); // source decremented, destination stacked
+    const source = items.find((i) => i.id === sourceId)!;
+    const dest = items.find((i) => i.id === destId)!;
+    expect(source.quantity).toBe(3);
+    expect(dest.quantity).toBe(3); // 1 + 2
+  });
+
+  it('respects notes in the auto-stack key (different notes => no merge)', () => {
+    const { inventoryStashId, storageStashId, catalog } = bootstrapTransfer();
+    const torch = catalog.find((d) => d.id === 'phb-2024:torch')!;
+    useStore.getState().dispatch({
+      type: 'acquire',
+      payload: {
+        stashId: storageStashId,
+        definitionId: torch.id,
+        quantity: 1,
+        source: 'catalog-add',
+        notes: 'lit',
+      },
+    });
+    useStore.getState().dispatch({
+      type: 'acquire',
+      payload: {
+        stashId: inventoryStashId,
+        definitionId: torch.id,
+        quantity: 1,
+        source: 'catalog-add',
+        notes: 'unlit',
+      },
+    });
+    const sourceId = useStore.getState().appState!.items.find((i) => i.notes === 'unlit')!.id;
+
+    useStore.getState().dispatch({
+      type: 'transfer',
+      payload: { itemInstanceId: sourceId, toStashId: storageStashId, quantity: 1 },
+    });
+
+    const inStorage = useStore.getState().appState!.items.filter((i) => i.ownerId === storageStashId);
+    expect(inStorage).toHaveLength(2); // both rows live in storage, distinct notes
+  });
+
+  it('emits one transfer log entry with the surviving destination row id', () => {
+    const { inventoryStashId, storageStashId, catalog } = bootstrapTransfer();
+    const torch = catalog.find((d) => d.id === 'phb-2024:torch')!;
+    useStore.getState().dispatch({
+      type: 'acquire',
+      payload: { stashId: storageStashId, definitionId: torch.id, quantity: 1, source: 'catalog-add' },
+    });
+    const destId = useStore.getState().appState!.items[0]!.id;
+    useStore.getState().dispatch({
+      type: 'acquire',
+      payload: { stashId: inventoryStashId, definitionId: torch.id, quantity: 2, source: 'catalog-add' },
+    });
+    const sourceId = useStore.getState().appState!.items.find((i) => i.ownerId === inventoryStashId)!.id;
+    const beforeLogLen = useStore.getState().log.length;
+
+    useStore.getState().dispatch({
+      type: 'transfer',
+      payload: { itemInstanceId: sourceId, toStashId: storageStashId, quantity: 2 },
+    });
+
+    const newEntries = useStore.getState().log.slice(beforeLogLen);
+    expect(newEntries).toHaveLength(1);
+    const e = newEntries[0]!;
+    expect(e.type).toBe('transfer');
+    if (e.type !== 'transfer') return;
+    expect(e.payload.itemInstanceId).toBe(destId); // surviving id, not the gone source
+    expect(e.payload.quantity).toBe(2);
+    expect(e.payload.fromStashId).toBe(inventoryStashId);
+    expect(e.payload.toStashId).toBe(storageStashId);
+    expect(e.actorRole).toBe('player');
+  });
+
+  it('rejects same-stash transfer (no-op)', () => {
+    const { inventoryStashId, catalog } = bootstrapTransfer();
+    const torch = catalog.find((d) => d.id === 'phb-2024:torch')!;
+    useStore.getState().dispatch({
+      type: 'acquire',
+      payload: { stashId: inventoryStashId, definitionId: torch.id, quantity: 2, source: 'catalog-add' },
+    });
+    const sourceId = useStore.getState().appState!.items[0]!.id;
+    expect(() =>
+      useStore.getState().dispatch({
+        type: 'transfer',
+        payload: { itemInstanceId: sourceId, toStashId: inventoryStashId, quantity: 1 },
+      }),
+    ).toThrow(/same stash|no-op/i);
+  });
+
+  it('rejects unknown itemInstanceId', () => {
+    const { storageStashId } = bootstrapTransfer();
+    expect(() =>
+      useStore.getState().dispatch({
+        type: 'transfer',
+        payload: { itemInstanceId: 'nope', toStashId: storageStashId, quantity: 1 },
+      }),
+    ).toThrow(/unknown itemInstanceId/i);
+  });
+
+  it('rejects unknown toStashId', () => {
+    const { inventoryStashId, catalog } = bootstrapTransfer();
+    const torch = catalog.find((d) => d.id === 'phb-2024:torch')!;
+    useStore.getState().dispatch({
+      type: 'acquire',
+      payload: { stashId: inventoryStashId, definitionId: torch.id, quantity: 1, source: 'catalog-add' },
+    });
+    const sourceId = useStore.getState().appState!.items[0]!.id;
+    expect(() =>
+      useStore.getState().dispatch({
+        type: 'transfer',
+        payload: { itemInstanceId: sourceId, toStashId: 'nope', quantity: 1 },
+      }),
+    ).toThrow(/unknown.*stash/i);
+  });
+
+  it('rejects over-quantity transfer', () => {
+    const { inventoryStashId, storageStashId, catalog } = bootstrapTransfer();
+    const torch = catalog.find((d) => d.id === 'phb-2024:torch')!;
+    useStore.getState().dispatch({
+      type: 'acquire',
+      payload: { stashId: inventoryStashId, definitionId: torch.id, quantity: 2, source: 'catalog-add' },
+    });
+    const sourceId = useStore.getState().appState!.items[0]!.id;
+    expect(() =>
+      useStore.getState().dispatch({
+        type: 'transfer',
+        payload: { itemInstanceId: sourceId, toStashId: storageStashId, quantity: 3 },
+      }),
+    ).toThrow(/exceeds/i);
+  });
+
+  it('rejects non-positive quantity', () => {
+    const { inventoryStashId, storageStashId, catalog } = bootstrapTransfer();
+    const torch = catalog.find((d) => d.id === 'phb-2024:torch')!;
+    useStore.getState().dispatch({
+      type: 'acquire',
+      payload: { stashId: inventoryStashId, definitionId: torch.id, quantity: 2, source: 'catalog-add' },
+    });
+    const sourceId = useStore.getState().appState!.items[0]!.id;
+    expect(() =>
+      useStore.getState().dispatch({
+        type: 'transfer',
+        payload: { itemInstanceId: sourceId, toStashId: storageStashId, quantity: 0 },
+      }),
+    ).toThrow(/positive/i);
+  });
+
+  it('produces an AppState that still validates against the shared schema', () => {
+    const { inventoryStashId, storageStashId, catalog } = bootstrapTransfer();
+    const torch = catalog.find((d) => d.id === 'phb-2024:torch')!;
+    useStore.getState().dispatch({
+      type: 'acquire',
+      payload: { stashId: inventoryStashId, definitionId: torch.id, quantity: 3, source: 'catalog-add' },
+    });
+    const sourceId = useStore.getState().appState!.items[0]!.id;
+    useStore.getState().dispatch({
+      type: 'transfer',
+      payload: { itemInstanceId: sourceId, toStashId: storageStashId, quantity: 2 },
+    });
+    expect(() => appStateSchema.parse(useStore.getState().appState)).not.toThrow();
+  });
+
+  it('round-trips through Dexie persistence', async () => {
+    const { inventoryStashId, storageStashId, catalog } = bootstrapTransfer();
+    const torch = catalog.find((d) => d.id === 'phb-2024:torch')!;
+    useStore.getState().dispatch({
+      type: 'acquire',
+      payload: { stashId: inventoryStashId, definitionId: torch.id, quantity: 3, source: 'catalog-add' },
+    });
+    const sourceId = useStore.getState().appState!.items[0]!.id;
+    useStore.getState().dispatch({
+      type: 'transfer',
+      payload: { itemInstanceId: sourceId, toStashId: storageStashId, quantity: 3 },
+    });
+    await flushPendingPersist();
+    const loaded = await loadAppState();
+    expect(loaded).not.toBeNull();
+    const wrapped = loaded as { appState: unknown; log: unknown };
+    expect(wrapped.appState).toEqual(useStore.getState().appState);
+  });
+});
+
+describe('reducer: split (M5)', () => {
+  /**
+   * `split` breaks one stack into two rows in the same stash. The new row
+   * inherits `notes` and `customName` (M5 plan decision). Validation lives
+   * in `packages/rules/inventory.validateSplit`: `1 \u2264 qty < source.quantity`.
+   *
+   * The auto-stack key `(definitionId, notes ?? "")` is unchanged by split —
+   * which is the point: the user splits in order to *change* one of those
+   * fields via the Item Detail editor (M2.5) afterwards. If they don't,
+   * a subsequent acquire against the same key collapses the rows back via
+   * the acquire reducer's existing auto-stack logic.
+   */
+
+  function bootstrapWithStack(quantity: number): { itemInstanceId: string; stashId: string } {
+    const { inventoryStashId, catalog } = localBootstrap();
+    const torch = catalog.find((d) => d.id === 'phb-2024:torch')!;
+    useStore.getState().dispatch({
+      type: 'acquire',
+      payload: {
+        stashId: inventoryStashId,
+        definitionId: torch.id,
+        quantity,
+        source: 'catalog-add',
+      },
+    });
+    const row = useStore.getState().appState!.items[0]!;
+    return { itemInstanceId: row.id, stashId: inventoryStashId };
+  }
+
+  it('splits a stack into two rows, source decremented, new row created with the split qty', () => {
+    const { itemInstanceId, stashId } = bootstrapWithStack(5);
+    useStore.getState().dispatch({
+      type: 'split',
+      payload: { itemInstanceId, quantity: 2 },
+    });
+
+    const items = useStore.getState().appState!.items;
+    expect(items).toHaveLength(2);
+    const source = items.find((i) => i.id === itemInstanceId)!;
+    const newRow = items.find((i) => i.id !== itemInstanceId)!;
+    expect(source.quantity).toBe(3);
+    expect(source.ownerId).toBe(stashId);
+    expect(newRow.quantity).toBe(2);
+    expect(newRow.ownerId).toBe(stashId);
+    expect(newRow.definitionId).toBe(source.definitionId);
+  });
+
+  it('carries over `notes` to the new row', () => {
+    const { inventoryStashId, catalog } = localBootstrap();
+    const torch = catalog.find((d) => d.id === 'phb-2024:torch')!;
+    useStore.getState().dispatch({
+      type: 'acquire',
+      payload: {
+        stashId: inventoryStashId,
+        definitionId: torch.id,
+        quantity: 4,
+        source: 'catalog-add',
+        notes: 'given by Volo',
+      },
+    });
+    const sourceId = useStore.getState().appState!.items[0]!.id;
+
+    useStore.getState().dispatch({
+      type: 'split',
+      payload: { itemInstanceId: sourceId, quantity: 1 },
+    });
+
+    const newRow = useStore.getState().appState!.items.find((i) => i.id !== sourceId)!;
+    expect(newRow.notes).toBe('given by Volo');
+  });
+
+  it('carries over `customName` to the new row', () => {
+    const { itemInstanceId } = bootstrapWithStack(3);
+    // Inject customName directly (acquire doesn't take it).
+    useStore.setState((s) => {
+      if (s.appState === null) return s;
+      return {
+        ...s,
+        appState: {
+          ...s.appState,
+          items: s.appState.items.map((i) =>
+            i.id === itemInstanceId ? { ...i, customName: "Volo's torch" } : i,
+          ),
+        },
+      };
+    });
+
+    useStore.getState().dispatch({
+      type: 'split',
+      payload: { itemInstanceId, quantity: 1 },
+    });
+
+    const newRow = useStore.getState().appState!.items.find((i) => i.id !== itemInstanceId)!;
+    expect(newRow.customName).toBe("Volo's torch");
+  });
+
+  it('emits one split log entry with both ids', () => {
+    const { itemInstanceId } = bootstrapWithStack(5);
+    const beforeLogLen = useStore.getState().log.length;
+
+    useStore.getState().dispatch({
+      type: 'split',
+      payload: { itemInstanceId, quantity: 2 },
+    });
+
+    const newEntries = useStore.getState().log.slice(beforeLogLen);
+    expect(newEntries).toHaveLength(1);
+    const e = newEntries[0]!;
+    expect(e.type).toBe('split');
+    if (e.type !== 'split') return;
+    expect(e.payload.sourceInstanceId).toBe(itemInstanceId);
+    expect(e.payload.quantity).toBe(2);
+    const newRowId = useStore.getState().appState!.items.find((i) => i.id !== itemInstanceId)!.id;
+    expect(e.payload.newInstanceId).toBe(newRowId);
+    expect(e.payload.stashId).toBe(useStore.getState().appState!.items.find((i) => i.id === itemInstanceId)!.ownerId);
+    expect(e.actorRole).toBe('player');
+  });
+
+  it('rejects qty === source.quantity (would empty the source row)', () => {
+    const { itemInstanceId } = bootstrapWithStack(3);
+    expect(() =>
+      useStore.getState().dispatch({
+        type: 'split',
+        payload: { itemInstanceId, quantity: 3 },
+      }),
+    ).toThrow();
+  });
+
+  it('rejects qty > source.quantity', () => {
+    const { itemInstanceId } = bootstrapWithStack(3);
+    expect(() =>
+      useStore.getState().dispatch({
+        type: 'split',
+        payload: { itemInstanceId, quantity: 4 },
+      }),
+    ).toThrow();
+  });
+
+  it('rejects qty <= 0', () => {
+    const { itemInstanceId } = bootstrapWithStack(3);
+    expect(() =>
+      useStore.getState().dispatch({
+        type: 'split',
+        payload: { itemInstanceId, quantity: 0 },
+      }),
+    ).toThrow(/positive/i);
+  });
+
+  it('rejects splitting a singleton', () => {
+    const { itemInstanceId } = bootstrapWithStack(1);
+    expect(() =>
+      useStore.getState().dispatch({
+        type: 'split',
+        payload: { itemInstanceId, quantity: 1 },
+      }),
+    ).toThrow();
+  });
+
+  it('rejects unknown itemInstanceId', () => {
+    localBootstrap();
+    expect(() =>
+      useStore.getState().dispatch({
+        type: 'split',
+        payload: { itemInstanceId: 'nope', quantity: 1 },
+      }),
+    ).toThrow(/unknown/i);
+  });
+
+  it('produces an AppState that still validates against the shared schema', () => {
+    const { itemInstanceId } = bootstrapWithStack(5);
+    useStore.getState().dispatch({
+      type: 'split',
+      payload: { itemInstanceId, quantity: 2 },
+    });
+    expect(() => appStateSchema.parse(useStore.getState().appState)).not.toThrow();
+  });
+});
+
+

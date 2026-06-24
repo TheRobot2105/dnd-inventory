@@ -390,4 +390,29 @@ describe('ItemHistory', () => {
       ),
     ).toBeInTheDocument();
   });
+
+  it('surfaces a split entry on BOTH the source and the new row with perspective-aware copy (M5)', () => {
+    // The same `split` log entry references both `sourceInstanceId` and
+    // `newInstanceId`. The history view phrases the entry from the
+    // viewing row's perspective: the source row reads "Split ×N into
+    // a new row"; the new row reads "Split off from another stack
+    // (×N)".
+    useStore.setState({
+      appState: null,
+      log: [
+        makeEntry('split', {
+          sourceInstanceId: 'item-source',
+          newInstanceId: 'item-new',
+          quantity: 2,
+          stashId: 's',
+        }),
+      ],
+    });
+
+    const { rerender } = render(<ItemHistory itemInstanceId="item-source" />);
+    expect(screen.getByText(/Split ×2 into a new row/i)).toBeInTheDocument();
+
+    rerender(<ItemHistory itemInstanceId="item-new" />);
+    expect(screen.getByText(/Split off from another stack \(×2\)/i)).toBeInTheDocument();
+  });
 });

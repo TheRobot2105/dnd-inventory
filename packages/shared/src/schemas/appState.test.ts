@@ -119,6 +119,23 @@ describe('appStateSchema round-trip', () => {
           recoveredLootStashId: 'stash-loot',
         },
       },
+      {
+        // M5: split entry round-trip. Confirms the new variant parses
+        // alongside the existing M0–M4 union members.
+        id: 'log-2',
+        partyId: 'party-1',
+        sessionId: null,
+        timestamp: '2026-06-23T10:01:00.000Z',
+        actorUserId: 'user-1',
+        actorRole: 'player',
+        type: 'split',
+        payload: {
+          sourceInstanceId: 'item-1',
+          newInstanceId: 'item-2',
+          quantity: 1,
+          stashId: 'stash-inv',
+        },
+      },
     ],
   };
 
