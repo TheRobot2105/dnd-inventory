@@ -401,7 +401,7 @@ No HP, spells, AC, proficiencies in v1.
 ### Form factor
 - **Desktop-first** (the primary device, especially for DM).
 - **Player views responsive on mobile** — the character sheet, party stash, recovered loot, transfer modal, item detail are all mobile-usable.
-- DM tools (dashboard, loot wizard, hoard generator, shop manager, party settings) are **desktop-priority**; their mobile posture (responsive reflow vs. a min-width "use a larger screen" banner) is **deferred to R9 implementation**, decided with real device testing.
+- DM tools (dashboard, loot wizard, hoard generator, shop manager, party settings) are **desktop-priority**. Mobile posture **resolved in R10.2 (2026-07-15)**: the **DM Dashboard** and **Party Settings** reflow acceptably and stay responsive; the **Hoard Generator**, **Loot Distribution Wizard**, and **Shop Manage** view (not the player Storefront) don't reflow below 768px and are gated behind a **min-width "use a larger screen" notice** at the Tailwind `md` (768px) breakpoint (CSS-only guard `components/nav/DesktopOnlyNotice.tsx`). Below 768px those three show the notice instead of a broken layout; at/above they render normally.
 
 ---
 

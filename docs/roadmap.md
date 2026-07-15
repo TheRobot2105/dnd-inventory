@@ -4085,7 +4085,15 @@ Self-service user account CRUD. **Depends on R9's redesigned UI language — do 
 
 #### R10.2 — DM-tools mobile posture
 
-- [ ] **DM-tools mobile posture** (promoted from R9-Deferred 2026-07-15) — OUTLINE §5 now says desktop-priority with the reflow-vs-min-width-banner decision **deferred to implementation**; decide per DM screen with real device testing, then amend OUTLINE §5 with the final stance.
+- [x] **DM-tools mobile posture** (promoted from R9-Deferred 2026-07-15) — OUTLINE §5 now says desktop-priority with the reflow-vs-min-width-banner decision **deferred to implementation**; decide per DM screen with real device testing, then amend OUTLINE §5 with the final stance.
+
+#### R10.2 — Notes
+
+> - **R10.2 shipped (2026-07-15) on `feat/r10`.** Posture decision: **min-width notice at 768px** (Tailwind `md`) over full mobile reflow, for the DM screens that don't reflow. Chosen with the user after an R9-era responsive audit.
+>   - **Per-screen split.** **DM Dashboard** (1-col tiles + stacked side cards) and **Party Settings** (`max-w-3xl` flex) already reflow acceptably → **untouched**. **Hoard Generator** (`grid-cols-5` coins + `grid-cols-3` handoff), **Loot Distribution Wizard** (fixed `w-44` select + cramped rows), and the **Shop Manage** view (5-col stock table) break below 768px → **wrapped in the notice**. The player **Storefront** stays responsive — only `ShopManage` is wrapped (the DM/solo Manage⇄Storefront toggle still flips to the responsive buy/sell UI on mobile).
+>   - **CSS-only guard.** New `apps/web/src/components/nav/DesktopOnlyNotice.tsx` renders the notice (`md:hidden`) + the wrapped screen (`hidden md:block`) — both in the DOM, the breakpoint decides visibility, no JS media query / hook (no hydration flash). Mirrors the existing `hidden lg:block` nav-shell gate in `Layout.tsx`. R9-token styling (framed `surface` card, e1/e2, `font-display`, `MonitorSmartphone` icon).
+>   - **OUTLINE §5 amended** — the "deferred to R9 implementation" sentence replaced with the resolved stance (which screens reflow vs. gated, the 768px threshold, the `DesktopOnlyNotice` pointer).
+>   - **Tests.** `DesktopOnlyNotice.test.tsx` (2 — both branches render + the `md:hidden`/`hidden md:block` gate classes). The 3 wrapped screens' existing suites stay green (28 tests) — the content branch is still in the jsdom DOM so role/label queries resolve. web 1103→1105; typecheck + lint green.
 
 #### R10.3 — Hub per-party stats
 
